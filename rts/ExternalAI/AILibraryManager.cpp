@@ -38,9 +38,7 @@
 #include <string>
 #include <set>
 #include <sstream>
-
 #include <limits.h>
-#include <string.h>
 
 
 void CAILibraryManager::reportError(const char* topic, const char* msg) {
@@ -85,7 +83,7 @@ static std::string noSlashAtEnd(const std::string& dir) {
 	return resDir;
 }
 
-CAILibraryManager::CAILibraryManager() : usedSkirmishAIInfos_initialized(false) {
+CAILibraryManager::CAILibraryManager() {
 
 	GetAllInfosFromCache();
 }
@@ -175,6 +173,7 @@ void CAILibraryManager::GetAllInfosFromCache() {
 			skirmishAIInfo->SetDataDir(noSlashAtEnd(possibleDataDir));
 			skirmishAIInfo->SetDataDirCommon(
 					std::string(possibleDataDir) + "common");
+			skirmishAIInfo->SetLuaAI(false);
 
 			SkirmishAIKey aiKey = skirmishAIInfo->GetKey();
 			AIInterfaceKey interfaceKey =
@@ -235,27 +234,6 @@ void CAILibraryManager::ClearAllInfos() {
 	skirmishAIKeys.clear();
 }
 
-const std::vector<std::string> CAILibraryManager::EMPTY_OPTION_VALUE_KEYS;
-const std::vector<std::string>& CAILibraryManager::GetSkirmishAIOptionValueKeys(int teamId) const {
-
-	const SkirmishAIData* aiData = gameSetup->GetSkirmishAIDataForTeam(teamId);
-	if (aiData != NULL) {
-		return aiData->optionKeys;
-	} else {
-		return EMPTY_OPTION_VALUE_KEYS;
-	}
-}
-const std::map<std::string, std::string> CAILibraryManager::EMPTY_OPTION_VALUES;
-const std::map<std::string, std::string>& CAILibraryManager::GetSkirmishAIOptionValues(int teamId) const {
-
-	const SkirmishAIData* aiData = gameSetup->GetSkirmishAIDataForTeam(teamId);
-	if (aiData != NULL) {
-		return aiData->options;
-	} else {
-		return EMPTY_OPTION_VALUES;
-	}
-}
-
 CAILibraryManager::~CAILibraryManager() {
 
 	ReleaseEverything();
@@ -273,32 +251,6 @@ const IAILibraryManager::T_interfaceInfos& CAILibraryManager::GetInterfaceInfos(
 }
 const IAILibraryManager::T_skirmishAIInfos& CAILibraryManager::GetSkirmishAIInfos() const {
 	return skirmishAIInfos;
-}
-
-const IAILibraryManager::T_skirmishAIInfos& CAILibraryManager::GetUsedSkirmishAIInfos() {
-
-	if (!usedSkirmishAIInfos_initialized) {
-		const CTeam* team = NULL;
-		for (unsigned int t = 0; t < (unsigned int)teamHandler->ActiveTeams(); ++t) {
-			team = teamHandler->Team(t);
-			if (team != NULL && team->isAI) {
-				const std::string& t_sn = team->skirmishAIKey.GetShortName();
-				const std::string& t_v = team->skirmishAIKey.GetVersion();
-
-				IAILibraryManager::T_skirmishAIInfos::const_iterator aiInfo;
-				for (aiInfo = skirmishAIInfos.begin(); aiInfo != skirmishAIInfos.end(); ++aiInfo) {
-					const std::string& ai_sn = aiInfo->second->GetShortName();
-					const std::string& ai_v = aiInfo->second->GetVersion();
-					// add this AI info if it is used in the current game
-					if (ai_sn == t_sn && (t_sn.empty() || ai_v == t_v)) {
-						usedSkirmishAIInfos[aiInfo->first] = aiInfo->second;
-					}
-				}
-			}
-		}
-	}
-
-	return usedSkirmishAIInfos;
 }
 
 const IAILibraryManager::T_dupInt& CAILibraryManager::GetDuplicateInterfaceInfos() const {
@@ -343,13 +295,20 @@ std::vector<SkirmishAIKey> CAILibraryManager::FittingSkirmishAIKeys(
 	return applyingKeys;
 }
 
-const ISkirmishAILibrary* CAILibraryManager::FetchSkirmishAILibrary(const SkirmishAIKey& skirmishAIKey) {
 
+
+const ISkirmishAILibrary* CAILibraryManager::FetchSkirmishAILibrary(const SkirmishAIKey& skirmishAIKey) {
 	T_skirmishAIInfos::const_iterator aiInfo = skirmishAIInfos.find(skirmishAIKey);
+
 	if (aiInfo == skirmishAIInfos.end()) {
-		logOutput.Print("Aborting the game, unknown skirmish AI specified: %s %s", skirmishAIKey.GetShortName().c_str(), skirmishAIKey.GetVersion().c_str());
+		logOutput.Print(
+			"Aborting the game, unknown skirmish AI specified: %s %s",
+			skirmishAIKey.GetShortName().c_str(),
+			skirmishAIKey.GetVersion().c_str()
+		);
 		return NULL;
 	}
+
 	return FetchInterface(skirmishAIKey.GetInterface())->FetchSkirmishAILibrary(*(aiInfo->second));
 }
 
@@ -359,13 +318,14 @@ void CAILibraryManager::ReleaseSkirmishAILibrary(const SkirmishAIKey& skirmishAI
 }
 
 void CAILibraryManager::ReleaseAllSkirmishAILibraries() {
-
 	T_loadedInterfaces::const_iterator lil;
-	for (lil=loadedAIInterfaceLibraries.begin(); lil!=loadedAIInterfaceLibraries.end(); lil++) {
+
+	for (lil = loadedAIInterfaceLibraries.begin(); lil != loadedAIInterfaceLibraries.end(); lil++) {
 		FetchInterface(lil->first)->ReleaseAllSkirmishAILibraries();
 		ReleaseInterface(lil->first); // only releases the library if its load count is 0
 	}
 }
+
 
 
 IAIInterfaceLibrary* CAILibraryManager::FetchInterface(const AIInterfaceKey& interfaceKey) {
@@ -419,7 +379,7 @@ AIInterfaceKey CAILibraryManager::FindFittingInterfaceSpecifier(
 	AIInterfaceKey fittingKey = AIInterfaceKey(); // unspecified key
 	for (key=keys.begin(); key!=keys.end(); key++) {
 		if (shortName == key->GetShortName()) {
-			int diff = versionCompare(key->GetVersion(), minVersion);
+			int diff = IAILibraryManager::VersionCompare(key->GetVersion(), minVersion);
 			if (diff >= 0 && diff < minDiff) {
 				fittingKey = *key;
 				minDiff = diff;
@@ -428,47 +388,4 @@ AIInterfaceKey CAILibraryManager::FindFittingInterfaceSpecifier(
 	}
 
 	return fittingKey;
-}
-
-static std::vector<std::string> split(const std::string& str, const char sep) {
-
-	std::vector<std::string> tokens;
-	std::string delimitters = ".";
-
-	// Skip delimiters at beginning.
-	std::string::size_type lastPos = str.find_first_not_of(delimitters, 0);
-	// Find first "non-delimiter".
-	std::string::size_type pos     = str.find_first_of(delimitters, lastPos);
-
-	while (std::string::npos != pos || std::string::npos != lastPos)
-	{
-		// Found a token, add it to the vector.
-		tokens.push_back(str.substr(lastPos, pos - lastPos));
-		// Skip delimiters.  Note the "not_of"
-		lastPos = str.find_first_not_of(sep, pos);
-		// Find next "non-delimiter"
-		pos = str.find_first_of(delimitters, lastPos);
-	}
-
-	return tokens;
-}
-int CAILibraryManager::versionCompare(
-		const std::string& version1,
-		const std::string& version2) {
-
-	std::vector<std::string> parts1 = split(version1, '.');
-	std::vector<std::string> parts2 = split(version2, '.');
-	unsigned int maxParts = parts1.size() > parts2.size() ? parts1.size() : parts2.size();
-
-	int diff = 0;
-	for (unsigned int i=0; i < maxParts; ++i) {
-		const std::string& v1p = i < parts1.size() ? parts1.at(i) : "0";
-		const std::string& v2p = i < parts2.size() ? parts2.at(i) : "0";
-		diff += (1<<((maxParts-i)*2)) * v1p.compare(v2p);
-	}
-
-	// computed the sing of diff -> 1, 0 or -1
-	int sign = (diff != 0) | -(int)((unsigned int)((int)diff) >> (sizeof(int) * CHAR_BIT - 1));
-
-	return sign;
 }

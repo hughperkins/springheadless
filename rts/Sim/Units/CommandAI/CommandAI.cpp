@@ -5,6 +5,7 @@
 #include "FactoryCAI.h"
 #include "LineDrawer.h"
 #include "ExternalAI/EngineOutHandler.h"
+#include "ExternalAI/SkirmishAIHandler.h"
 #include "Sim/Units/Groups/Group.h"
 #include "Game/GameHelper.h"
 #include "Game/SelectedUnits.h"
@@ -370,7 +371,8 @@ bool CCommandAI::AllowedCommand(const Command& c, bool fromSynced)
 	const UnitDef* ud = owner->unitDef;
 	int maxHeightDiff = SQUARE_SIZE;
 	// AI's may do as they like
-	bool aiOrder = (teamHandler->Team(owner->team) && teamHandler->Team(owner->team)->isAI);
+	CSkirmishAIHandler::ids_t saids = skirmishAIHandler.GetSkirmishAIsInTeam(owner->team);
+	const bool aiOrder = (saids.size() > 0);
 
 	switch (c.id) {
 		case CMD_DGUN:
@@ -1219,7 +1221,7 @@ void CCommandAI::SlowUpdate()
 }
 
 
-int CCommandAI::GetDefaultCmd(CUnit* pointed, CFeature* feature)
+int CCommandAI::GetDefaultCmd(const CUnit* pointed, const CFeature* feature)
 {
 	if (pointed) {
 		if (!teamHandler->Ally(gu->myAllyTeam, pointed->allyteam)) {
@@ -1516,8 +1518,8 @@ bool CCommandAI::SkipParalyzeTarget(const CUnit* target)
 	if (!w->weaponDef->paralyzer) {
 		return false;
 	}
-	if ((target->losStatus[owner->allyteam] & LOS_INLOS) && // visible
-			(target->paralyzeDamage > target->health)) {  // stunned
+	// visible and stunned?
+	if ((target->losStatus[owner->allyteam] & LOS_INLOS) && target->stunned) {
 		if ((commandQue.size() > 2) ||
 				((commandQue.size() == 2) &&
 				 (commandQue.back().id != CMD_SET_WANTED_MAX_SPEED))) {

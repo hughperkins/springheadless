@@ -17,6 +17,10 @@ Usage:
 Start with the full! path to the demofile as the only argument
 
 Please note that not all NETMSG's are implemented, expand if needed.
+
+When compiling for windows with MinGW, make sure to use the
+-Wl,-subsystem,console flag when linking, as otherwise there will be
+no console output (you still could use this.exe > z.tzt though).
 */
 
 int main (int argc, char* argv[])
@@ -93,6 +97,11 @@ int main (int argc, char* argv[])
 					default: cout << (int)buffer[2];
 				}
 				cout << " Parameter:" << (int)buffer[3] << endl;
+				break;
+			case NETMSG_COMMAND:
+				cout << "COMMAND Playernum:" << (int)buffer[3] << " Size: " << *(unsigned short*)(buffer+1) << endl;
+				if (*(unsigned short*)(buffer+1) != packet->length)
+					cout << "      packet length error: expected: " <<  *(unsigned short*)(buffer+1) << " got: " << packet->length << endl;
 				break;
 			default:
 				cout << "MSG: " << (unsigned)buffer[0] << endl;

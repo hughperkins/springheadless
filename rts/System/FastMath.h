@@ -1,7 +1,15 @@
 #ifndef FASTMATH_H
 #define FASTMATH_H
 
+#ifndef DEDICATED_NOSSE
+#include <xmmintrin.h>
+#endif
+#include <boost/cstdint.hpp>
 #include "lib/streflop/streflop_cond.h"
+
+#ifdef _MSC_VER
+#define __builtin_sqrtf sqrtf
+#endif
 
 /**
  * @file FastMath.cpp
@@ -15,46 +23,55 @@
  */
 
 namespace fastmath {
-#ifdef __GNUC__
-	typedef float v4sf __attribute__ ((vector_size (16)));
-#endif
-
-	/**
-	* @brief Calculates 1/sqrt(x) using SSE instructions
-	*
-	*/
-	inline float isqrt(float x)
-	{
-			union
-			{
-					v4sf vec;
-					float x;
-			}
-			tmp;
-
-
-			tmp.x = x;
-#ifdef __GNUC__
-			tmp.vec = __builtin_ia32_rsqrtss (tmp.vec);
-#else
-#	error "implement me please"
-#endif
-			return tmp.x;
-	}
-
-
-	/**
-	* @brief Calculates 1/sqrt(x)
-	*
-	* Deprecated. Do not use.
-	*/
-	inline float isqrt2(float x)
-	{
-		return isqrt(x);
-	}
-
-
+	float isqrt_nosse(float);
 	/****************** Square root functions ******************/
+
+	/**
+	* @brief DO NOT USE IN SYNCED CODE. Calculates 1/sqrt(x) using SSE instructions.
+	*
+	* This is much slower than isqrt_nosse (extremely slow on AMDs) and
+	* additionally gives different results on Intel and AMD processors.
+	*/
+	inline float isqrt_sse(float x)
+	{
+#ifndef DEDICATED_NOSSE
+		union
+		{
+			__m128 vec;
+			float x;
+		} tmp;
+
+		tmp.x = x;
+		tmp.vec = _mm_rsqrt_ss(tmp.vec);
+		return tmp.x;
+#else
+		return isqrt_nosse(x);
+#endif
+	}
+
+	/**
+	* @brief Sync-safe. Calculates square root with using SSE instructions.
+	*
+	* Slower than std::sqrtf, faster than streflop
+	*/
+
+	inline float sqrt_sse(float x)
+	{
+#ifndef DEDICATED_NOSSE
+		union
+		{
+			__m128 vec;
+			float x;
+		} tmp;
+
+		tmp.x = x;
+		tmp.vec = _mm_sqrt_ss(tmp.vec);
+		return tmp.x;
+#else
+		return sqrt(x);
+#endif
+	}
+
 
 	/**
 	* @brief Calculates 1/sqrt(x) with less accuracy
@@ -68,10 +85,12 @@ namespace fastmath {
 	* by Charles McEniry [2007] for a mathematical derivation of this
 	* method (or Chris Lomont's 2003 "Fast Inverse Square Root" paper)
 	*
+	* It has been found to give slightly different results on different Intel CPUs.
+	* Possible cause: 32bit vs 64bit. Use with care.
 	*/
 	inline float isqrt_nosse(float x) {
 		float xh = 0.5f * x;
-		int i = *(int*) &x;
+		boost::int32_t i = *(boost::int32_t*) &x;
 		// "magic number" which makes a very good first guess
 		i = 0x5f375a86 - (i >> 1);
 		x = *(float*) &i;
@@ -91,7 +110,7 @@ namespace fastmath {
 	*/
 	inline float isqrt2_nosse(float x) {
 		float xh = 0.5f * x;
-		int i = *(int*) &x;
+		boost::int32_t i = *(boost::int32_t*) &x;
 		// "magic number" which makes a very good first guess
 		i = 0x5f375a86 - (i >> 1);
 		x = *(float*) &i;
@@ -102,40 +121,55 @@ namespace fastmath {
 
 	}
 
-	/**
-	* @brief Calculates square root with less accuracy
-	*
-	* Force using SSE instruction set.
-	*/
+
+	/****************** Square root ******************/
 
 
+	/** Calculate sqrt using builtin sqrtf. */
 	inline float sqrt(float x)
 	{
-			union
-			{
-					v4sf vec;
-					float x;
-			}
-			tmp;
+		return __builtin_sqrtf(x);
+	}
 
-			tmp.x = x;
-#ifdef __GNUC__
-			tmp.vec = __builtin_ia32_sqrtss (tmp.vec);
-#else
-#	error "implement me please"
-#endif
-			return tmp.x;
+	/** Calculate sqrt using builtin sqrtf. */
+	inline float sqrt2(float x)
+	{
+		return __builtin_sqrtf(x);
 	}
 
 	/**
-	* @brief Calculates square root with more accuracy
+	* @brief A (possibly very) inaccurate and numerically unstable, but fast, version of sqrt.
 	*
-	* Deprecated. Do not use.
+	* Use with care.
 	*/
-	inline float sqrt2(float x) {
-		return fastmath::sqrt(x);
+	inline float apxsqrt(float x) {
+		return x * isqrt_nosse(x);
 	}
 
+	/**
+	* @brief A (possibly very) inaccurate and numerically unstable, but fast, version of sqrt.
+	*
+	* Use with care. This should be a little bit better, albeit slower, than fastmath::sqrt.
+	*/
+	inline float apxsqrt2(float x) {
+		return x * isqrt2_nosse(x);
+	}
+
+	/**
+	* @brief Calculates 1/sqrt(x) very quickly.
+	*
+	*/
+	inline float isqrt(float x) {
+		return isqrt2_nosse(x);
+	}
+
+	/**
+	* @brief Calculates 1/sqrt(x) very quickly. More accurate but slower than isqrt.
+	*
+	*/
+	inline float isqrt2(float x) {
+		return isqrt2_nosse(x);
+	}
 
 	/****************** Trigonometric functions ******************/
 
@@ -225,6 +259,11 @@ namespace fastmath {
 
 using fastmath::PI;
 namespace math {
+	//! override streflop with faster sqrt!
+	inline float sqrt(float x) {
+		return fastmath::sqrt_sse(x);
+	}
+
 	using fastmath::isqrt;
 	using fastmath::isqrt2;
 }

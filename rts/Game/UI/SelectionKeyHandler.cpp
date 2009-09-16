@@ -19,6 +19,7 @@
 #include "Sim/Units/Unit.h"
 #include "Sim/Units/UnitHandler.h"
 #include "Sim/Units/UnitTypes/Building.h"
+#include "KeyBindings.h"
 #include "myMath.h"
 #include <boost/cstdint.hpp>
 
@@ -27,6 +28,15 @@ CSelectionKeyHandler *selectionKeys;
 extern boost::uint8_t *keys;
 
 CSelectionKeyHandler::CSelectionKeyHandler(void)
+{
+	LoadSelectionKeys();
+}
+
+CSelectionKeyHandler::~CSelectionKeyHandler(void)
+{
+}
+
+void CSelectionKeyHandler::LoadSelectionKeys()
 {
 	std::ifstream ifs(filesystem.LocateFile("selectkeys.txt").c_str());
 
@@ -44,58 +54,46 @@ CSelectionKeyHandler::CSelectionKeyHandler(void)
 		ifs >> buf;
 		std::string sel(buf);
 
-		HotKey hk;
-
-		hk.select=sel;
-		hk.shift=false;
-		hk.control=false;
-		hk.alt=false;
+		bool shift=false;
+		bool control=false;
+		bool alt=false;
+		unsigned char keyname;
 
 		while(true){
 			std::string s=ReadToken(key);
 
 			if(s=="Shift"){
-				hk.shift=true;
+				shift=true;
 			} else if (s=="Control"){
-				hk.control=true;
+				control=true;
 			} else if (s=="Alt"){
-				hk.alt=true;
+				alt=true;
 			} else {
 				char c=s[0];
 				if(c>='A' && c<='Z')
-					hk.key=SDLK_a + (c - 'A');
+					keyname=SDLK_a + (c - 'A');
 
 				if(c>='0' && c<='9')
-					hk.key=SDLK_0 + (c -'0');
+					keyname=SDLK_0 + (c -'0');
 
 				break;
 			}
 			ReadDelimiter(key);
 		}
-
-		hotkeys.push_back(hk);
-	}
-}
-
-CSelectionKeyHandler::~CSelectionKeyHandler(void)
-{
-}
-
-bool CSelectionKeyHandler::KeyPressed(unsigned short key, bool isRepeat)
-{
-	// TODO: sort the vector, and do key-based fast lookup
-	for(vector<HotKey>::iterator hi=hotkeys.begin();hi!=hotkeys.end();++hi){
-		if(key==hi->key && hi->shift==!!keys[SDLK_LSHIFT] && hi->control==!!keys[SDLK_LCTRL] && hi->alt==!!keys[SDLK_LALT]){
-			DoSelection(hi->select);
-			return true;
+		std::string keybindstring;
+		if ( alt ) keybindstring += "Alt";
+		if ( control ) {
+			if ( keybindstring.size() != 0 ) keybindstring += "+";
+			keybindstring += "Ctrl";
 		}
+		if ( shift ) {
+			if ( keybindstring.size() != 0 ) keybindstring += "+";
+			keybindstring += "Shift";
+		}
+		if ( keybindstring.size() != 0 ) keybindstring += "+";
+		keybindstring += keyname;
+		keyBindings->Command( "bind " + keybindstring + " select " + sel );
 	}
-	return false;
-}
-
-bool CSelectionKeyHandler::KeyReleased(unsigned short key)
-{
-	return false;
 }
 
 std::string CSelectionKeyHandler::ReadToken(std::string& s)
@@ -180,18 +178,30 @@ void CSelectionKeyHandler::DoSelection(std::string selectString)
 				}
 			}
 		}
-	} else if(s=="FromMouse"){
+	} else if(s=="FromMouse" || s=="FromMouseC"){
+		// FromMouse uses distance from a point on the ground,
+		// so essentially a selection sphere.
+		// FromMouseC uses a cylinder shaped volume for selection,
+		// so the heights of the units do not matter.
+		const bool cylindrical = (s == "FromMouseC");
 		ReadDelimiter(selectString);
 		float maxDist=atof(ReadToken(selectString).c_str());
 
 		float dist=ground->LineGroundCol(camera->pos,camera->pos+mouse->dir*8000);
 		float3 mp=camera->pos+mouse->dir*dist;
+		if (cylindrical) {
+			mp.y = 0;
+		}
 
 		if (!gu->spectatingFullSelect) {
 		  // team units in mouse range
 			CUnitSet* tu=&teamHandler->Team(gu->myTeam)->units;
 			for(CUnitSet::iterator ui=tu->begin();ui!=tu->end();++ui){
-				if(mp.SqDistance((*ui)->pos)<Square(maxDist)){
+				float3 up = (*ui)->pos;
+				if (cylindrical) {
+					up.y = 0;
+				}
+				if(mp.SqDistance(up) < Square(maxDist)){
 					selection.push_back(*ui);
 				}
 			}
@@ -199,7 +209,11 @@ void CSelectionKeyHandler::DoSelection(std::string selectString)
 		  // all units in mouse range
 			std::list<CUnit*>* au=&uh->activeUnits;
 			for(std::list<CUnit*>::iterator ui=au->begin();ui!=au->end();++ui){
-				if(mp.SqDistance((*ui)->pos)<Square(maxDist)){
+				float3 up = (*ui)->pos;
+				if (cylindrical) {
+					up.y = 0;
+				}
+				if(mp.SqDistance(up)<Square(maxDist)){
 					selection.push_back(*ui);
 				}
 			}

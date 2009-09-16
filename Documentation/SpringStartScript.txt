@@ -8,6 +8,7 @@
 	SourcePort=0;       // set this if you want a different source port (as client), 0 means OS-select and should be prefered
 
 	MyPlayerName=somename;
+	MyPasswd=secretpassword;
 	IsHost=0;           // tell the engine this is a client
 }
 
@@ -26,6 +27,7 @@
 	HostIP=xxx.xxx.xxx.xxx; // no effect as host
 	HostPort=xxx;       // where clients are going to connet to, usually 8452
 	SourcePort=0;       // no effect for host
+	AutohostIP=xxx;     // communicate with spring, specify the ip you are listening (as host)
 	AutohostPort=X;     // communicate with spring, specify the port you are listening (as host)
 
 	MyPlayerName=somename; // our ingame-name (needs to match one players Name= field)
@@ -40,6 +42,7 @@
 	[PLAYER0]
 	{
 		Name=name;      // pure info, eg. the account name from the lobby server
+		Password=secretpassword; // player can only connect if he set MyPasswd accordingly
 		Spectator=0;
 		Team=number;    // the team this player controlls
 		IsFromDemo=0;   // use only in combination with Demofile (see above)

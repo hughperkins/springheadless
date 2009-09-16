@@ -17,10 +17,12 @@
 
 #include "SkirmishAILibrary.h"
 
-#include "LogOutput.h"
-#include "IAILibraryManager.h"
-#include "EngineOutHandler.h"
-#include "AIInterfaceKey.h"
+#include "ExternalAI/IAILibraryManager.h"
+#include "ExternalAI/SkirmishAIHandler.h"
+#include "ExternalAI/AIInterfaceKey.h"
+#include "System/LogOutput.h"
+#include "System/GlobalUnsynced.h"
+
 #include <string>
 
 CSkirmishAILibrary::CSkirmishAILibrary(const SSkirmishAILibrary& ai,
@@ -58,43 +60,42 @@ LevelOfSupport CSkirmishAILibrary::GetLevelOfSupportFor(int teamId,
 	}
 }
 
-void CSkirmishAILibrary::Init(int teamId) const {
-
+void CSkirmishAILibrary::Init(int teamId, const SSkirmishAICallback* c_callback) const
+{
 	if (sSAI.init != NULL) {
-		const SSkirmishAICallback* c_callback = eoh->GetSkirmishAICallback(teamId);
 		int error = sSAI.init(teamId, c_callback);
+
 		if (error != 0) {
 			// init failed
-			logOutput.Print("Failed to initialize an AI for team %d, error: %d",
-					teamId, error);
-			eoh->DestroySkirmishAI(teamId);
+			logOutput.Print("Failed to initialize an AI for team %d, error: %d", teamId, error);
+			// TODO: FIXME: convert the whole class to skirmishAIId based, instead of teamId based
+			const size_t skirmishAIId = skirmishAIHandler.GetSkirmishAIsInTeam(teamId, gu->myPlayerNum)[0];
+			skirmishAIHandler.SetLocalSkirmishAIDieing(skirmishAIId, 5 /* = AI failed to init */);
 		}
 	}
 }
 
-void CSkirmishAILibrary::Release(int teamId) const {
-
+void CSkirmishAILibrary::Release(int teamId) const
+{
 	if (sSAI.release != NULL) {
 		int error = sSAI.release(teamId);
 		if (error != 0) {
 			// release failed
-			logOutput.Print("Failed to release the AI for team %d, error: %d",
-					teamId, error);
+			logOutput.Print("Failed to release the AI for team %d, error: %d", teamId, error);
 		}
 	}
 }
 
-int CSkirmishAILibrary::HandleEvent(int teamId, int topic, const void* data)
-		const {
-
+int CSkirmishAILibrary::HandleEvent(int teamId, int topic, const void* data) const
+{
 	int ret = sSAI.handleEvent(teamId, topic, data);
 
 	if (ret != 0) {
 		// event handling failed!
 		logOutput.Print(
-				"Warning: AI for team %i failed handling event with topic %i"
-				", error: %i",
-				teamId, topic, ret);
+			"Warning: AI for team %i failed handling event with topic %i, error: %i",
+			teamId, topic, ret
+		);
 	}
 
 	return ret;

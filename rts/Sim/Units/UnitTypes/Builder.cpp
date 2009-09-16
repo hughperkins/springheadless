@@ -144,7 +144,10 @@ void CBuilder::Update()
 			switch (terraformType) {
 				case Terraform_Building:
 					if (curBuild) {
-						terraformScale = (terraformSpeed + terraformHelp) / curBuild->terraformLeft;
+						if (curBuild->terraformLeft <= 0)
+							terraformScale = 0.0f;
+						else
+							terraformScale = (terraformSpeed + terraformHelp) / curBuild->terraformLeft;
 						curBuild->terraformLeft -= (terraformSpeed + terraformHelp);
 						terraformHelp = 0;
 
@@ -174,7 +177,10 @@ void CBuilder::Update()
 					}
 					break;
 				case Terraform_Restore:
-					terraformScale = (terraformSpeed + terraformHelp) / myTerraformLeft;
+					if (myTerraformLeft <= 0)
+						terraformScale = 0.0f;
+					else
+						terraformScale = (terraformSpeed + terraformHelp) / myTerraformLeft;
 					myTerraformLeft -= (terraformSpeed + terraformHelp);
 					terraformHelp = 0;
 
@@ -303,7 +309,7 @@ void CBuilder::Update()
 			}
 		}
 		else if(curResurrect && f3SqDist(curResurrect->pos, pos)<Square(buildDistance+curResurrect->radius) && inBuildStance){
-			const UnitDef* ud=unitDefHandler->GetUnitByName(curResurrect->createdFromUnit);
+			const UnitDef* ud=unitDefHandler->GetUnitDefByName(curResurrect->createdFromUnit);
 			if(ud){
 				if ((modInfo.reclaimMethod != 1) && (curResurrect->reclaimLeft < 1)) {
 					// This corpse has been reclaimed a little, need to restore the resources
@@ -469,13 +475,13 @@ void CBuilder::SetResurrectTarget(CFeature* target)
 
 void CBuilder::SetCaptureTarget(CUnit* target)
 {
-	if(target==curCapture)
+	if (target == curCapture)
 		return;
 
 	StopBuild(false);
 	TempHoldFire();
 
-	curCapture=target;
+	curCapture = target;
 	AddDeathDependence(curCapture);
 
 	SetBuildStanceToward(target->pos);
@@ -677,7 +683,7 @@ void CBuilder::DependentDied(CObject *o)
 
 void CBuilder::SetBuildStanceToward(float3 pos)
 {
-	if (script->HasFunction(COBFN_StartBuilding)) {
+	if (script->HasStartBuilding()) {
 		const float3 wantedDir = (pos - midPos).Normalize();
 		const float h = GetHeadingFromVectorF(wantedDir.x, wantedDir.z);
 		const float p = asin(wantedDir.dot(updir));
@@ -726,7 +732,7 @@ void CBuilder::CreateNanoParticle(float3 goal, float radius, bool inverse)
 		float3 weaponPos = pos + frontdir * relWeaponFirePos.z + updir * relWeaponFirePos.y + rightdir * relWeaponFirePos.x;
 
 		float3 dif = goal - weaponPos;
-		const float l = fastmath::sqrt2(dif.SqLength());
+		const float l = fastmath::apxsqrt2(dif.SqLength());
 
 		dif /= l;
 		float3 error = gu->usRandVector() * (radius / l);

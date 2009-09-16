@@ -6,7 +6,15 @@
 #include <set>
 #include <list>
 #include <cctype>
-#include <unistd.h>
+#ifndef _WIN32
+	#include <unistd.h>
+	#define EXECLP execlp
+#else
+	#include <process.h>
+	#define EXECLP _execlp
+#endif
+
+#include <errno.h>
 
 #include <fstream>
 
@@ -421,7 +429,6 @@ int LuaUnsyncedCtrl::Echo(lua_State* L)
 	return LuaUtils::Echo(L);
 }
 
-
 static string ParseMessage(lua_State* L, const string& msg)
 {
 	string::size_type start = msg.find("<PLAYER");
@@ -586,12 +593,15 @@ int LuaUnsyncedCtrl::PlaySoundFile(lua_State* L)
 
 int LuaUnsyncedCtrl::PlaySoundStream(lua_State* L)
 {
-	//const int args = lua_gettop(L);
+	const int args = lua_gettop(L);
 
 	const string soundFile = luaL_checkstring(L, 1);
 	const float volume = luaL_optnumber(L, 2, 1.0f);
+	bool enqueue = false;
+	if (args >= 3)
+		enqueue = lua_toboolean(L, 3);
 
-	Channels::BGMusic.Play(soundFile, volume);
+	Channels::BGMusic.Play(soundFile, volume, enqueue);
 
 	// .ogg files don't have sound ID's generated
 	// for them (yet), so we always succeed here
@@ -1228,17 +1238,25 @@ int LuaUnsyncedCtrl::ExtractModArchiveFile(lua_State* L)
 
 	const string path = luaL_checkstring(L, 1);
 
-	CFileHandler fh(path, SPRING_VFS_MOD);
+	CFileHandler fhVFS(path, SPRING_VFS_MOD);
+	CFileHandler fhRAW(path, SPRING_VFS_RAW);
 
-	if (!fh.FileExists()) {
-		luaL_error(L, "Path \"%s\" not found in mod archive", path.c_str());
+	if (!fhVFS.FileExists()) {
+		luaL_error(L, "file \"%s\" not found in mod archive", path.c_str());
+		return 0;
 	}
+
+	if (fhRAW.FileExists()) {
+		luaL_error(L, "cannot extract file \"%s\": already exists", path.c_str());
+		return 0;
+	}
+
 
 	string dname = filesystem.GetDirectory(path);
 	string fname = filesystem.GetFilename(path);
 
 #ifdef WIN32
-	const int s = dname.size();
+	const size_t s = dname.size();
 	// get rid of any trailing slashes (CreateDirectory()
 	// fails on at least XP and Vista if they are present,
 	// ie. it creates the dir but actually returns false)
@@ -1252,10 +1270,10 @@ int LuaUnsyncedCtrl::ExtractModArchiveFile(lua_State* L)
 		           dname.c_str(), fname.c_str());
 	}
 
-	const int numBytes = fh.FileSize();
+	const int numBytes = fhVFS.FileSize();
 	char* buffer = new char[numBytes];
 
-	fh.Read(buffer, numBytes);
+	fhVFS.Read(buffer, numBytes);
 
 	fstream fstr(path.c_str(), ios::out | ios::binary);
 	fstr.write((const char*) buffer, numBytes);
@@ -1271,7 +1289,6 @@ int LuaUnsyncedCtrl::ExtractModArchiveFile(lua_State* L)
 	delete[] buffer;
 
 	lua_pushboolean(L, true);
-
 	return 1;
 }
 
@@ -1672,11 +1689,19 @@ int LuaUnsyncedCtrl::Restart(lua_State* L)
 	{
 		std::ofstream scriptfile((FileSystemHandler::GetInstance().GetWriteDir()+"/script.txt").c_str());
 		scriptfile << script;
-		execlp(Platform::GetBinaryFile().c_str(), arguments.c_str(), (FileSystemHandler::GetInstance().GetWriteDir()+"/script.txt").c_str(), NULL);
+		scriptfile.close();
+		//FIXME: ugly
+		if (arguments.empty())
+			EXECLP(Platform::GetBinaryFile().c_str(), Platform::GetBinaryFile().c_str(), (FileSystemHandler::GetInstance().GetWriteDir()+"/script.txt").c_str(), NULL);
+		else
+			EXECLP(Platform::GetBinaryFile().c_str(), Platform::GetBinaryFile().c_str(), arguments.c_str(), (FileSystemHandler::GetInstance().GetWriteDir()+"/script.txt").c_str(), NULL);
 	}
 	else
 	{
-		execlp(Platform::GetBinaryFile().c_str(), arguments.c_str(), NULL);
+		if (arguments.empty())
+			EXECLP(Platform::GetBinaryFile().c_str(), Platform::GetBinaryFile().c_str(), NULL);
+		else
+			EXECLP(Platform::GetBinaryFile().c_str(), Platform::GetBinaryFile().c_str(), arguments.c_str(), NULL);
 	}
 	LogObject() << "Error in Restart: " << strerror(errno);
 	lua_pushboolean(L, false);
@@ -1696,7 +1721,7 @@ int LuaUnsyncedCtrl::SetUnitDefIcon(lua_State* L)
 			"Incorrect arguments to SetUnitDefIcon(unitDefID, \"icon\")");
 	}
 	const int unitDefID = lua_toint(L, 1);
-	const UnitDef* ud = unitDefHandler->GetUnitByID(unitDefID);
+	const UnitDef* ud = unitDefHandler->GetUnitDefByID(unitDefID);
 	if (ud == NULL) {
 		return 0;
 	}
@@ -1716,7 +1741,7 @@ int LuaUnsyncedCtrl::SetUnitDefIcon(lua_State* L)
 		const set<int>& decoySet = fit->second;
 		set<int>::const_iterator dit;
 		for (dit = decoySet.begin(); dit != decoySet.end(); ++dit) {
-  		const UnitDef* decoyDef = unitDefHandler->GetUnitByID(*dit);
+  		const UnitDef* decoyDef = unitDefHandler->GetUnitDefByID(*dit);
 			decoyDef->iconType = ud->iconType;
 		}
 	}
@@ -1732,7 +1757,7 @@ int LuaUnsyncedCtrl::SetUnitDefImage(lua_State* L)
 	}
 
 	const int unitDefID = luaL_checkint(L, 1);
-	const UnitDef* ud = unitDefHandler->GetUnitByID(unitDefID);
+	const UnitDef* ud = unitDefHandler->GetUnitDefByID(unitDefID);
 	if (ud == NULL) {
 		return 0;
 	}

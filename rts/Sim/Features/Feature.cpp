@@ -68,7 +68,7 @@ CFeature::CFeature():
 	def(0),
 	collisionVolume(0),
 	inUpdateQue(false),
-	drawQuad(-1),
+	drawQuad(-2),
 	finalHeight(0),
 	reachedFinalPos(false),
 	myFire(0),
@@ -163,12 +163,16 @@ void CFeature::Initialize(const float3& _pos, const FeatureDef* _def, short int 
 
 	if (def->drawType == DRAWTYPE_MODEL) {
 		model = LoadModel(def);
-		height = model->height;
-		SetRadius(model->radius);
-
-		midPos = pos + model->relMidPos;
-
-		collisionVolume = new CollisionVolume(def->collisionVolume, model->radius);
+		if (!model) {
+			logOutput.Print("Features: Couldn't load model for " + defName);
+			SetRadius(0.0f);
+			midPos = pos;
+		} else {
+			height = model->height;
+			SetRadius(model->radius);
+			midPos = pos + model->relMidPos;
+			collisionVolume = new CollisionVolume(def->collisionVolume, model->radius);
+		}
 	}
 	else if (def->drawType >= DRAWTYPE_TREE) {
 		SetRadius(TREE_RADIUS);
@@ -408,13 +412,11 @@ void CFeature::DependentDied(CObject *o)
 }
 
 
-void CFeature::ForcedMove(const float3& newPos)
+void CFeature::ForcedMove(const float3& newPos, bool snapToGround)
 {
 	if (blocking) {
 		UnBlock();
 	}
-
-	featureHandler->UpdateDrawQuad(this, newPos);
 
 	// remove from managers
 	qf->RemoveFeature(this);
@@ -424,11 +426,17 @@ void CFeature::ForcedMove(const float3& newPos)
 
 	pos = newPos;
 
+	featureHandler->UpdateDrawPos(this);
+
 	// setup finalHeight
-	if (def->floating) {
-		finalHeight = ground->GetHeight(pos.x, pos.z);
+	if (snapToGround) {
+		if (def->floating) {
+			finalHeight = ground->GetHeight(pos.x, pos.z);
+		} else {
+			finalHeight = ground->GetHeight2(pos.x, pos.z);
+		}
 	} else {
-		finalHeight = ground->GetHeight2(pos.x, pos.z);
+		finalHeight = newPos.y;
 	}
 
 	// setup midPos
@@ -466,12 +474,11 @@ void CFeature::ForcedSpin(const float3& newDir)
 	}
 */
 
-	CMatrix44f tmp;
-	tmp.Translate(pos);
-	tmp.RotateZ(newDir.z);
-	tmp.RotateX(newDir.x);
-	tmp.RotateY(newDir.y);
-	transMatrix = tmp;
+	transMatrix.LoadIdentity();
+	transMatrix.Translate(pos);
+	transMatrix.RotateZ(newDir.z);
+	transMatrix.RotateX(newDir.x);
+	transMatrix.RotateY(newDir.y);
 
 	// const float clamped = fmod(newDir.y, PI * 2.0);
 	// heading = (short int)(clamped * 65536);
@@ -489,6 +496,10 @@ bool CFeature::UpdatePosition()
 			bool haveVerticalSpeed = false;
 			bool inBounds = false;
 
+			// NOTE: apply more drag if we were a tank or bot?
+			// (would require passing extra data to Initialize())
+			deathSpeed *= 0.95f;
+
 			if (deathSpeed.SqLength2D() > 0.01f) {
 				UnBlock();
 				qf->RemoveFeature(this);
@@ -497,9 +508,6 @@ bool CFeature::UpdatePosition()
 				// position) if it's still greater than 0
 				pos += deathSpeed;
 				midPos += deathSpeed;
-				// NOTE: apply more drag if we were a tank or bot?
-				// (would require passing extra data to Initialize())
-				deathSpeed *= 0.95f;
 
 				haveForwardSpeed = true;
 
@@ -531,6 +539,7 @@ bool CFeature::UpdatePosition()
 				// larger than ground height, correct
 				pos.y = realGroundHeight;
 				midPos.y = pos.y + model->relMidPos.y;
+				deathSpeed.y = 0.0f;
 			}
 
 			inBounds = pos.CheckInBounds();
@@ -544,47 +553,48 @@ bool CFeature::UpdatePosition()
 				deathSpeed = ZeroVector;
 			}
 
-			featureHandler->UpdateDrawQuad(this, pos);
+			featureHandler->UpdateDrawPos(this);
+
 			CalculateTransform();
 		}
 
 		if (!reachedFinalPos)
 			finishedUpdate = false;
-	}
+	}else{
+		if (pos.y > finalHeight) {
+			//! feature is falling
+			if (def->drawType >= DRAWTYPE_TREE)
+				treeDrawer->DeleteTree(pos);
 
-	if (pos.y > finalHeight) {
-		//! feature is falling
-		if (def->drawType >= DRAWTYPE_TREE)
-			treeDrawer->DeleteTree(pos);
+			if (pos.y > 0.0f) {
+				speed.y += mapInfo->map.gravity; //! gravity is negative
+			} else { //! fall slower in water
+				speed.y += mapInfo->map.gravity * 0.5;
+			}
+			pos.y += speed.y;
+			midPos.y += speed.y;
+			transMatrix[13] += speed.y;
 
-		if (pos.y > 0.0f) {
-			speed.y += mapInfo->map.gravity; //! gravity is negative
-		} else { //! fall slower in water
-			speed.y += mapInfo->map.gravity * 0.5;
+			if (def->drawType >= DRAWTYPE_TREE)
+				treeDrawer->AddTree(def->drawType - 1, pos, 1.0f);
+		} else if (pos.y < finalHeight) {
+			//! if ground is restored, make sure feature does not get buried
+			if (def->drawType >= DRAWTYPE_TREE)
+				treeDrawer->DeleteTree(pos);
+
+			float diff = finalHeight - pos.y;
+			pos.y = finalHeight;
+			midPos.y += diff;
+			transMatrix[13] += diff;
+			speed.y = 0.0f;
+
+			if (def->drawType >= DRAWTYPE_TREE)
+				treeDrawer->AddTree(def->drawType - 1, pos, 1.0f);
 		}
-		pos.y += speed.y;
-		midPos.y += speed.y;
-		transMatrix[13] += speed.y;
 
-		if (def->drawType >= DRAWTYPE_TREE)
-			treeDrawer->AddTree(def->drawType - 1, pos, 1.0f);
-	} else if (pos.y < finalHeight) {
-		//! if ground is restored, make sure feature does not get buried
-		if (def->drawType >= DRAWTYPE_TREE)
-			treeDrawer->DeleteTree(pos);
-
-		float diff = finalHeight - pos.y;
-		pos.y = finalHeight;
-		midPos.y += diff;
-		transMatrix[13] += diff;
-		speed.y = 0.0f;
-
-		if (def->drawType >= DRAWTYPE_TREE)
-			treeDrawer->AddTree(def->drawType - 1, pos, 1.0f);
+		if (pos.y != finalHeight)
+			finishedUpdate = false;
 	}
-
-	if (pos.y != finalHeight)
-		finishedUpdate = false;
 
 	isUnderWater = ((pos.y + height) < 0.0f);
 	return finishedUpdate;

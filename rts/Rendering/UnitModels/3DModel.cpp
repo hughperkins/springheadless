@@ -116,9 +116,9 @@ void LocalModelPiece::Draw() const
 	glPushMatrix();
 
 	if (pos.x || pos.y || pos.z) { glTranslatef(pos.x, pos.y, pos.z); }
-	if (rot[1]) { glRotatef( rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
-	if (rot[0]) { glRotatef( rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
-	if (rot[2]) { glRotatef(-rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
+	if (rot[1]) { glRotatef(rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
+	if (rot[0]) { glRotatef(rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
+	if (rot[2]) { glRotatef(rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
 
 	if (visible)
 		glCallList(displist);
@@ -139,9 +139,9 @@ void LocalModelPiece::DrawLOD(unsigned int lod) const
 	glPushMatrix();
 
 	if (pos.x || pos.y || pos.z) { glTranslatef(pos.x, pos.y, pos.z); }
-	if (rot[1]) { glRotatef( rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
-	if (rot[0]) { glRotatef( rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
-	if (rot[2]) { glRotatef(-rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
+	if (rot[1]) { glRotatef(rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
+	if (rot[0]) { glRotatef(rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
+	if (rot[2]) { glRotatef(rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
 
 	if (visible)
 		glCallList(lodDispLists[lod]);
@@ -161,9 +161,9 @@ void LocalModelPiece::ApplyTransform() const
 	}
 
 	if (pos.x || pos.y || pos.z) { glTranslatef(pos.x, pos.y, pos.z); }
-	if (rot[1]) { glRotatef( rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
-	if (rot[0]) { glRotatef( rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
-	if (rot[2]) { glRotatef(-rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
+	if (rot[1]) { glRotatef(rot[1] * RADTOANG, 0.0f, 1.0f, 0.0f); }
+	if (rot[0]) { glRotatef(rot[0] * RADTOANG, 1.0f, 0.0f, 0.0f); }
+	if (rot[2]) { glRotatef(rot[2] * RADTOANG, 0.0f, 0.0f, 1.0f); }
 }
 
 
@@ -173,10 +173,10 @@ void LocalModelPiece::GetPiecePosIter(CMatrix44f* mat) const
 		parent->GetPiecePosIter(mat);
 	}
 
-	if (pos.x || pos.y || pos.z) { mat->Translate(pos.x, pos.y, -pos.z); }
-	if (rot[1]) { mat->RotateY(rot[1]); }
-	if (rot[0]) { mat->RotateX(rot[0]); }
-	if (rot[2]) { mat->RotateZ(rot[2]); }
+	if (pos.x || pos.y || pos.z) { mat->Translate(pos.x, pos.y, pos.z); }
+	if (rot[1]) { mat->RotateY(-rot[1]); }
+	if (rot[0]) { mat->RotateX(-rot[0]); }
+	if (rot[2]) { mat->RotateZ(-rot[2]); }
 }
 
 
@@ -195,6 +195,11 @@ void LocalModelPiece::SetLODCount(unsigned int count)
 }
 
 
+#if defined(USE_GML) && defined(__GNUC__) && (__GNUC__ == 4)
+// This is supposed to fix some GCC crashbug related to threading
+// The MOVAPS SSE instruction is otherwise getting misaligned data
+__attribute__ ((force_align_arg_pointer))
+#endif
 float3 LocalModelPiece::GetPos() const
 {
 	CMatrix44f mat;
@@ -213,10 +218,9 @@ float3 LocalModelPiece::GetPos() const
 		}
 	}
 
+	// we use a 'right' vector, and the positive x axis points to the left
 	float3 pos = mat.GetPos();
-	pos.z *= -1.0f;
-	pos.x *= -1.0f;
-
+	pos.x = -pos.x;
 	return pos;
 }
 
@@ -248,31 +252,32 @@ bool LocalModelPiece::GetEmitDirPos(float3 &pos, float3 &dir) const
 	CMatrix44f mat;
 	GetPiecePosIter(&mat);
 
-	//hm...
-	static const float3 invAxis(-1, 1, -1);
-	static const float3 invVertAxis(1, 1, -1);
-
 	const S3DModelPiece* piece = original;
 	if (!piece)
 		return false;
 
 	if (piece->vertexCount == 0) {
-		pos = mat.GetPos()*invAxis;
-		dir = mat.Mul(float3(0,0,-1))*invAxis - pos;
+		pos = mat.GetPos();
+		dir = mat.Mul(float3(0,0,1)) - pos;
 	}
 	else if(piece->vertexCount == 1) {
-		pos = mat.GetPos()*invAxis;
-		dir = mat.Mul(piece->GetVertexPos(0)*invVertAxis)*invAxis - pos;
+		pos = mat.GetPos();
+		dir = mat.Mul(piece->GetVertexPos(0)) - pos;
 	}
 	else if(piece->vertexCount >= 2) {
-		float3 p1 = mat.Mul(piece->GetVertexPos(0) * invVertAxis) * invAxis;
-		float3 p2 = mat.Mul(piece->GetVertexPos(1) * invVertAxis) * invAxis;
+		float3 p1 = mat.Mul(piece->GetVertexPos(0));
+		float3 p2 = mat.Mul(piece->GetVertexPos(1));
 
 		pos = p1;
 		dir = p2 - p1;
 	} else {
 		return false;
 	}
+
+	// we use a 'right' vector, and the positive x axis points to the left
+	pos.x = -pos.x;
+	dir.x = -dir.x;
+
 	return true;
 }
 

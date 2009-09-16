@@ -155,7 +155,6 @@ void LuaUtils::PushCurrentFuncEnv(lua_State* L, const char* caller)
 	lua_remove(L, -2); // remove the function
 }
 
-
 /******************************************************************************/
 /******************************************************************************/
 
@@ -417,6 +416,28 @@ void LuaUtils::ParseCommandArray(lua_State* L, const char* caller,
 }
 
 
+int LuaUtils::ParseFacing(lua_State* L, const char* caller, int index)
+{
+	if (lua_israwnumber(L, index)) {
+		return std::max(0, std::min(3, lua_toint(L, index)));
+	}
+	else if (lua_israwstring(L, index)) {
+		const string dir = StringToLower(lua_tostring(L, index));
+		if (dir == "s") { return 0; }
+		if (dir == "e") { return 1; }
+		if (dir == "n") { return 2; }
+		if (dir == "w") { return 3; }
+		if (dir == "south") { return 0; }
+		if (dir == "east")  { return 1; }
+		if (dir == "north") { return 2; }
+		if (dir == "west")  { return 3; }
+		luaL_error(L, "%s(): bad facing string", caller);
+	}
+	luaL_error(L, "%s(): bad facing parameter", caller);
+	return 0;
+}
+
+
 /******************************************************************************/
 /******************************************************************************/
 
@@ -552,10 +573,16 @@ int LuaUtils::ZlibCompress(lua_State* L)
 
 int LuaUtils::ZlibDecompress(lua_State* L)
 {
+	const int args = lua_gettop(L); // number of arguments
+	if (args < 1)
+		return luaL_error(L, "ZlibCompress: missign data argument");
 	size_t inLen;
 	const char* inData = luaL_checklstring(L, 1, &inLen);
 
 	long unsigned bufsize = 65000;
+	if (args > 1 && lua_isnumber(L, 2))
+		bufsize = std::max(lua_toint(L, 2), 0);
+
 	std::vector<boost::uint8_t> uncompressed(bufsize, 0);
 	const int error = uncompress(&uncompressed[0], &bufsize, (const boost::uint8_t*)inData, inLen);
 	if (error == Z_OK)
@@ -657,6 +684,21 @@ int LuaUtils::PushDebugTraceback(lua_State *L)
 	return lua_gettop(L);
 }
 
+/******************************************************************************/
+/******************************************************************************/
+
+void LuaUtils::PushStringVector(lua_State* L, const vector<string>& vec)
+{
+	lua_newtable(L);
+	for (size_t i = 0; i < vec.size(); i++) {
+		lua_pushnumber(L, (int) (i + 1));
+		lua_pushstring(L, vec[i].c_str());
+		lua_rawset(L, -3);
+	}
+	lua_pushstring(L, "n");
+	lua_pushnumber(L, vec.size());
+	lua_rawset(L, -3);
+}
 
 /******************************************************************************/
 /******************************************************************************/

@@ -23,7 +23,6 @@
 #include "Sim/Projectiles/Projectile.h"
 #include "Sim/Units/UnitDef.h"
 #include "Sim/Units/UnitDefHandler.h"
-#include "Sim/Weapons/WeaponDefHandler.h"
 #include "FileSystem/SimpleParser.h"
 #include "LogOutput.h"
 #include "Util.h"
@@ -202,10 +201,10 @@ bool CKeyAutoBinder::BindBuildType(const string& keystr,
 
 	vector<UnitDefHolder> defs;
 
-	const std::map<std::string, int>& udMap = unitDefHandler->unitID;
+	const std::map<std::string, int>& udMap = unitDefHandler->unitDefIDsByName;
 	std::map<std::string, int>::const_iterator udIt;
 	for (udIt = udMap.begin(); udIt != udMap.end(); udIt++) {
-	  const UnitDef* ud = unitDefHandler->GetUnitByID(udIt->second);
+		const UnitDef* ud = unitDefHandler->GetUnitDefByID(udIt->second);
 		if (ud == NULL) {
 	  	continue;
 		}

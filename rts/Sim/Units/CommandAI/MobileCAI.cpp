@@ -461,7 +461,7 @@ void CMobileCAI::ExecuteLoadUnits(Command &c) {
 	}
 
 	if (!inCommand) {
-		inCommand ^= true; // ?
+		inCommand = true;
 		Command newCommand;
 		newCommand.id = CMD_LOAD_UNITS;
 		newCommand.params.push_back(owner->id);
@@ -914,7 +914,7 @@ void CMobileCAI::ExecuteAttack(Command &c)
 
 
 
-int CMobileCAI::GetDefaultCmd(CUnit* pointed, CFeature* feature)
+int CMobileCAI::GetDefaultCmd(const CUnit* pointed, const CFeature* feature)
 {
 	if (pointed) {
 		if (!teamHandler->Ally(gu->myAllyTeam,pointed->allyteam)) {

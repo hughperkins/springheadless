@@ -247,7 +247,7 @@ void C3DOParser::GetPrimitives(S3DOPiece* obj,int pos,int num,vertex_vector* vv,
 			sp.texture=texturehandler3DO->Get3DOTexture(t);
 		}
 		float3 n=-(obj->vertices[sp.vertices[1]].pos-obj->vertices[sp.vertices[0]].pos).cross(obj->vertices[sp.vertices[2]].pos-obj->vertices[sp.vertices[0]].pos);
-		n.Normalize();
+		n.SafeNormalize();
 		sp.normal=n;
 		sp.normals.insert(sp.normals.begin(), sp.numVertex, n);
 
@@ -311,7 +311,7 @@ void C3DOParser::CalcNormals(S3DOPiece* o) const
 				}
 			}
 
-			vnormal.Normalize();
+			vnormal.SafeNormalize();
 			ps->normals[a] = vnormal;
 		}
 	}

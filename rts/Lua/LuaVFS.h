@@ -38,7 +38,17 @@ class LuaVFS {
 		static int UnsyncDirList(lua_State* L);
 		static int UnsyncSubDirs(lua_State* L);
 
-		static int UseArchive(lua_State* L);
+		static int UseArchive(lua_State* L); ///< temporary
+
+		/**
+		@brief Permanent mapping of files into VFS (only from unsynced)
+		
+		LuaParameters: (string Filename), (unsigned int checksum, optional)
+		*/
+		static int MapArchive(lua_State* L);
+
+		static int ZlibCompress(lua_State* L);
+		static int ZlibDecompress(lua_State* L);
 
 		// string packing utilities
 		static int PackU8(lua_State* L);

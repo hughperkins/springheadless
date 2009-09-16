@@ -43,34 +43,6 @@ CFeatureHandler* featureHandler = NULL;
 
 /******************************************************************************/
 
-CR_BIND(FeatureDef, );
-
-CR_REG_METADATA(FeatureDef, (
-		CR_MEMBER(myName),
-		CR_MEMBER(description),
-		CR_MEMBER(metal),
-		CR_MEMBER(id),
-		CR_MEMBER(energy),
-		CR_MEMBER(maxHealth),
-		CR_MEMBER(reclaimTime),
-		CR_MEMBER(mass),
-		CR_MEMBER(upright),
-		CR_MEMBER(drawType),
-		//CR_MEMBER(model), FIXME
-		CR_MEMBER(modelname),
-		CR_MEMBER(resurrectable),
-		CR_MEMBER(destructable),
-		CR_MEMBER(blocking),
-		CR_MEMBER(burnable),
-		CR_MEMBER(floating),
-		CR_MEMBER(geoThermal),
-		CR_MEMBER(deathFeature),
-		CR_MEMBER(smokeTime),
-		CR_MEMBER(xsize),
-		CR_MEMBER(zsize)
-		));
-
-
 CR_BIND(CFeatureHandler, );
 
 CR_REG_METADATA(CFeatureHandler, (
@@ -119,7 +91,10 @@ CFeatureHandler::CFeatureHandler() : nextFreeID(0)
 		throw content_error("Error loading FeatureDefs");
 	}
 
-	// get most of the feature defs (missing trees and geovent from the map)
+	//! featureDefIDs start with 1
+	featureDefsVector.push_back(NULL);
+
+	//! get most of the feature defs (missing trees and geovent from the map)
 	vector<string> keys;
 	rootTable.GetKeys(keys);
 	for (int i = 0; i < (int)keys.size(); i++) {
@@ -178,6 +153,19 @@ void CFeatureHandler::PostLoad()
 			drawQuads[(*it)->drawQuad].features.insert(*it);
 }
 
+
+void CFeatureHandler::BackupFeatures()
+{
+	fadeFeaturesSave    = fadeFeatures;
+	fadeFeaturesS3OSave = fadeFeaturesS3O;
+}
+
+void CFeatureHandler::RestoreFeatures()
+{
+	fadeFeatures    = fadeFeaturesSave;
+	fadeFeaturesS3O = fadeFeaturesS3OSave;
+}
+
 void CFeatureHandler::AddFeatureDef(const std::string& name, FeatureDef* fd)
 {
 	std::map<std::string, const FeatureDef*>::const_iterator it = featureDefs.find(name);
@@ -192,14 +180,11 @@ void CFeatureHandler::AddFeatureDef(const std::string& name, FeatureDef* fd)
 }
 
 
-const FeatureDef* CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable,
-                                                    const string& mixedCase)
+void CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable, const string& mixedCase)
 {
 	const string name = StringToLower(mixedCase);
-	std::map<std::string, const FeatureDef*>::iterator fi = featureDefs.find(name);
-
-	if (fi != featureDefs.end()) {
-		return fi->second;
+	if (featureDefs.find(name) != featureDefs.end()) {
+		return;
 	}
 
 	FeatureDef* fd = new FeatureDef;
@@ -214,6 +199,7 @@ const FeatureDef* CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable,
 	fd->burnable      =  fdTable.GetBool("flammable",      false);
 	fd->destructable  = !fdTable.GetBool("indestructible", false);
 	fd->reclaimable   =  fdTable.GetBool("reclaimable",    fd->destructable);
+	fd->autoreclaim   =  fdTable.GetBool("autoreclaimable",    fd->autoreclaim);
 	fd->resurrectable =  fdTable.GetInt("resurrectable",   -1);
 
 	//this seem to be the closest thing to floating that ta wreckage contains
@@ -274,10 +260,6 @@ const FeatureDef* CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable,
 	fdTable.SubTable("customParams").GetMap(fd->customParams);
 
 	AddFeatureDef(name, fd);
-
-	fi = featureDefs.find(name);
-
-	return fi->second;
 }
 
 
@@ -302,7 +284,7 @@ const FeatureDef* CFeatureHandler::GetFeatureDef(const std::string mixedCase, co
 
 const FeatureDef* CFeatureHandler::GetFeatureDefByID(int id)
 {
-	if ((id < 0) || (static_cast<size_t>(id) >= featureDefsVector.size())) {
+	if ((id < 1) || (static_cast<size_t>(id) >= featureDefsVector.size())) {
 		return NULL;
 	}
 	return featureDefsVector[id];
@@ -313,8 +295,8 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 {
 	PrintLoadMsg("Initializing map features");
 
+	//! add map's featureDefs
 	int numType = readmap->GetNumFeatureTypes ();
-
 	for (int a = 0; a < numType; ++a) {
 		const string name = StringToLower(readmap->GetFeatureType(a));
 
@@ -366,6 +348,7 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 	}
 
 	if (!onlyCreateDefs) {
+		//! create map features
 		const int numFeatures = readmap->GetNumFeatures();
 		MapFeatureInfo* mfi = new MapFeatureInfo[numFeatures];
 		readmap->GetFeatureInfo(mfi);
@@ -394,8 +377,6 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 
 int CFeatureHandler::AddFeature(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // AddFeature
-
 	// FIXME -- randomize me, pretty please
 	//          (could be done in blocks, if (empty) { add 5000 freeIDs } ?)
 	if (freeIDs.empty()) {
@@ -408,11 +389,8 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 	SetFeatureUpdateable(feature);
 
 	if (feature->def->drawType == DRAWTYPE_MODEL) {
-		int quad = int(feature->pos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
-		           int(feature->pos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
-		DrawQuad* dq = &drawQuads[quad];
-		dq->features.insert(feature);
-		feature->drawQuad = quad;
+		feature->drawQuad = -1;
+		UpdateDrawPos(feature);
 	}
 
 	eventHandler.FeatureCreated(feature);
@@ -423,8 +401,6 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 
 void CFeatureHandler::DeleteFeature(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // DeleteFeature - maybe superfluous
-
 	toBeRemoved.push_back(feature->id);
 
 	eventHandler.FeatureDestroyed(feature);
@@ -494,9 +470,15 @@ void CFeatureHandler::Update()
 				toBeFreedIDs.push_back(feature->id);
 				activeFeatures.erase(feature);
 
-				if (feature->drawQuad >= 0) {
-					DrawQuad* dq = &drawQuads[feature->drawQuad];
-					dq->features.erase(feature);
+				{
+					GML_STDMUTEX_LOCK(rfeat); // Update
+
+					if (feature->drawQuad >= 0) {
+						DrawQuad* dq = &drawQuads[feature->drawQuad];
+						dq->features.erase(feature);
+					}
+
+					updateDrawFeatures.erase(feature);
 				}
 
 				if (feature->inUpdateQue) {
@@ -504,6 +486,8 @@ void CFeatureHandler::Update()
 				}
 				fadeFeatures.erase(feature);
 				fadeFeaturesS3O.erase(feature);
+				fadeFeaturesSave.erase(feature);
+				fadeFeaturesS3OSave.erase(feature);
 
 				delete feature;
 			}
@@ -524,25 +508,39 @@ void CFeatureHandler::Update()
 }
 
 
-void CFeatureHandler::UpdateDrawQuad(CFeature* feature, const float3& newPos)
+void CFeatureHandler::UpdateDrawQuad(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // UpdateDrawQuad
-
 	const int oldDrawQuad = feature->drawQuad;
-	if (oldDrawQuad >= 0) {
+	if (oldDrawQuad >= -1) {
 		const int newDrawQuad =
-			int(newPos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
-			int(newPos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
+			int(feature->pos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
+			int(feature->pos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
 		if (oldDrawQuad != newDrawQuad) {
-			DrawQuad* oldDQ = &drawQuads[oldDrawQuad];
-			oldDQ->features.erase(feature);
-			DrawQuad* newDQ = &drawQuads[newDrawQuad];
-			newDQ->features.insert(feature);
+			if (oldDrawQuad >= 0)
+				drawQuads[oldDrawQuad].features.erase(feature);
+			drawQuads[newDrawQuad].features.insert(feature);
 			feature->drawQuad = newDrawQuad;
 		}
 	}
 }
 
+void CFeatureHandler::UpdateDraw()
+{
+	GML_STDMUTEX_LOCK(rfeat); // UpdateDraw
+
+	for(std::set<CFeature *>::iterator i=updateDrawFeatures.begin(); i!= updateDrawFeatures.end(); ++i) {
+		UpdateDrawQuad(*i);
+	}
+
+	updateDrawFeatures.clear();
+}
+
+void CFeatureHandler::UpdateDrawPos(CFeature* feature)
+{
+	GML_STDMUTEX_LOCK(rfeat); // UpdateDrawPos
+
+	updateDrawFeatures.insert(feature);
+}
 
 void CFeatureHandler::SetFeatureUpdateable(CFeature* feature)
 {
@@ -587,14 +585,27 @@ void CFeatureHandler::Draw()
 
 	GML_RECMUTEX_LOCK(feat); // Draw
 
-	glEnable(GL_FOG);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	if(gu->drawFog) {
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	}
 
 	unitDrawer->SetupForUnitDrawing();
 	unitDrawer->SetupFor3DO();
 	DrawRaw(0, &drawFar);
 	unitDrawer->CleanUp3DO();
+
+	// S3O features can have transparent bits
+	glPushAttrib(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER,0.5f);
+
 	unitDrawer->DrawQuedS3O();
+
+	glPopAttrib();
+
 	unitDrawer->CleanUpUnitDrawing();
 
 	if (drawFar.size()>0) {
@@ -630,10 +641,15 @@ void CFeatureHandler::DrawFadeFeatures(bool submerged, bool noAdvShading)
 	else
 		unitDrawer->SetupForGhostDrawing();
 
-	glDisable(GL_ALPHA_TEST);
+	glPushAttrib(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER,0.5f);
 
-	glEnable(GL_FOG);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	if(gu->drawFog) {
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	}
 
 	double plane[4]={0,submerged?-1:1,0,0};
 	glClipPlane(GL_CLIP_PLANE3, plane);
@@ -643,22 +659,28 @@ void CFeatureHandler::DrawFadeFeatures(bool submerged, bool noAdvShading)
 	{
 		GML_RECMUTEX_LOCK(feat); // DrawFadeFeatures
 
-		for(std::set<CFeature *>::iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
+		for(std::set<CFeature *>::const_iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
 			glColor4f(1,1,1,(*i)->tempalpha);
+			glAlphaFunc(GL_GREATER,(*i)->tempalpha/2.0f);
 			unitDrawer->DrawFeatureStatic(*i);
 		}
 
 		unitDrawer->CleanUp3DO();
 
-		for(std::set<CFeature *>::iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
-			glColor4f(1,1,1,(*i)->tempalpha);
+		for(std::set<CFeature *>::const_iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
+			float cols[]={1,1,1,(*i)->tempalpha};
+			glColor4fv(cols);
+			glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,cols);
+			glAlphaFunc(GL_GREATER,(*i)->tempalpha/2.0f); // a hack, sorting objects by distance would look better
+
 			texturehandlerS3O->SetS3oTexture((*i)->model->textureType);
 			(*i)->DrawS3O();
 		}
 	}
 
 	glDisable(GL_FOG);
-	glEnable(GL_ALPHA_TEST);
+
+	glPopAttrib();
 
 	if(unitDrawer->advShading)
 		unitDrawer->CleanUpUnitDrawing();
@@ -679,7 +701,20 @@ void CFeatureHandler::DrawShadowPass()
 	GML_RECMUTEX_LOCK(feat); // DrawShadowPass
 
 	DrawRaw(1, NULL);
+
+	if(unitDrawer->advFade) { // FIXME: Why does texture alpha not work with shadows on ATI?
+		glEnable(GL_TEXTURE_2D); // Need the alpha mask for transparent features
+		glPushAttrib(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GREATER,0.5f);
+	}
+
 	unitDrawer->DrawQuedS3O();
+
+	if(unitDrawer->advFade) {
+		glPopAttrib();
+		glDisable(GL_TEXTURE_2D);
+	}
 
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	glDisable(GL_VERTEX_PROGRAM_ARB);
@@ -709,9 +744,8 @@ void CFeatureDrawer::DrawQuad(int x, int y)
 		CFeature* f = (*fi);
 		const FeatureDef* def = f->def;
 
-		if (def->drawType == DRAWTYPE_MODEL && (f->allyteam == -1 || f->allyteam == gu->myAllyTeam ||
-			gu->spectatingFullView || loshandler->InLos(f->pos, gu->myAllyTeam)) ) {
-
+		if (def->drawType == DRAWTYPE_MODEL
+				&& (gu->spectatingFullView || f->IsInLosForAllyTeam(gu->myAllyTeam))) {
 			if (drawReflection) {
 				float3 zeroPos;
 				if (f->midPos.y < 0) {
@@ -733,37 +767,28 @@ void CFeatureDrawer::DrawQuad(int x, int y)
 			float farLength = f->sqRadius * unitDrawDist * unitDrawDist;
 
 			if (sqDist < farLength) {
-				if(unitDrawer->advFade && unitDrawer->advShading) {
-					float sqFadeDistE;
-					float sqFadeDistB;
-					if(farLength < sqFadeDistEnd) {
-						sqFadeDistE = farLength;
-						sqFadeDistB = farLength * 0.75f * 0.75f;
-					} else {
-						sqFadeDistE = sqFadeDistEnd;
-						sqFadeDistB = sqFadeDistBegin;
-					}
-					if(sqDist < sqFadeDistB) {
-						f->tempalpha = 1.0f;
-						if (f->model->type == MODELTYPE_3DO) {
-							unitDrawer->DrawFeatureStatic(f);
-						} else {
-							unitDrawer->QueS3ODraw(f, f->model->textureType);
-						}
-					} else if(sqDist < sqFadeDistE) {
-						f->tempalpha = 1.0f - (sqDist - sqFadeDistB) / (sqFadeDistE - sqFadeDistB);
-						if (f->model->type == MODELTYPE_3DO) {
-							featureHandler->fadeFeatures.insert(f);
-						} else {
-							featureHandler->fadeFeaturesS3O.insert(f);
-						}
-					}
+				float sqFadeDistE;
+				float sqFadeDistB;
+				if(farLength < sqFadeDistEnd) {
+					sqFadeDistE = farLength;
+					sqFadeDistB = farLength * 0.75f * 0.75f;
 				} else {
-					f->tempalpha = 1.0f;
+					sqFadeDistE = sqFadeDistEnd;
+					sqFadeDistB = sqFadeDistBegin;
+				}
+				if(sqDist < sqFadeDistB) {
+					f->tempalpha = 0.99f;
 					if (f->model->type == MODELTYPE_3DO) {
 						unitDrawer->DrawFeatureStatic(f);
 					} else {
 						unitDrawer->QueS3ODraw(f, f->model->textureType);
+					}
+				} else if(sqDist < sqFadeDistE) {
+					f->tempalpha = 1.0f - (sqDist - sqFadeDistB) / (sqFadeDistE - sqFadeDistB);
+					if (f->model->type == MODELTYPE_3DO) {
+						featureHandler->fadeFeatures.insert(f);
+					} else {
+						featureHandler->fadeFeaturesS3O.insert(f);
 					}
 				}
 			} else {
@@ -815,12 +840,4 @@ void CFeatureHandler::DrawFar(CFeature* feature, CVertexArray* va)
 	va->AddVertexQTN(interPos+(curad+offset)+crrad,tx,ty+(1.0f/64.0f),unitDrawer->camNorm);
 	va->AddVertexQTN(interPos+(curad+offset)-crrad,tx+(1.0f/64.0f),ty+(1.0f/64.0f),unitDrawer->camNorm);
 	va->AddVertexQTN(interPos-(curad-offset)-crrad,tx+(1.0f/64.0f),ty,unitDrawer->camNorm);
-}
-
-
-S3DModel* FeatureDef::LoadModel()
-{
-	if (model==NULL)
-		model = modelParser->Load3DModel(modelname);
-	return model;
 }

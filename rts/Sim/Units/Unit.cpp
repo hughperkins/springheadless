@@ -61,7 +61,7 @@
 #include "UnitTypes/Building.h"
 #include "UnitTypes/TransportUnit.h"
 
-#include "COB/UnitScript.h"
+#include "COB/NullUnitScript.h"
 #include "COB/UnitScriptFactory.h"
 #include "CommandAI/AirCAI.h"
 #include "CommandAI/BuilderCAI.h"
@@ -306,7 +306,10 @@ CUnit::~CUnit()
 		radarhandler->RemoveUnit(this);
 	}
 
-	delete script;
+	if (script != &CNullUnitScript::value) {
+		delete script;
+	}
+
 	modelParser->DeleteLocalModel(this);
 }
 
@@ -450,6 +453,8 @@ void CUnit::Drop(float3 parentPos,float3 parentDir, CUnit* parent)
 	frontdir = parentDir;
 	frontdir.y = 0;
 	speed.y = 0;
+
+	script->Falling(); //start parachute animation
 }
 
 
@@ -528,8 +533,9 @@ void CUnit::Update()
 	moveType->Update();
 	GML_GET_TICKS(lastUnitUpdate);
 
-	inAir   = ((pos.y - ground->GetHeight(pos.x,pos.z)) > 0.0f);
-	inWater =  (pos.y <= 0.0f);
+	inWater = (pos.y <= 0.0f);
+	inAir   = (!inWater) && ((pos.y - ground->GetHeight(pos.x,pos.z)) > 1.0f);
+
 
 	if (inAir != oldInAir) {
 		if (inAir) {
@@ -698,7 +704,7 @@ void CUnit::SlowUpdate()
 
 	if (stunned) {
 		// de-stun only if we are not (still) inside a non-firebase transport
-		if (paralyzeDamage < health && !(transporter && !transporter->unitDef->isFirePlatform) ) {
+		if (paralyzeDamage <= maxHealth && !(transporter && !transporter->unitDef->isFirePlatform) ) {
 			stunned = false;
 		}
 		const bool oldCloak = isCloaked;
@@ -945,14 +951,11 @@ void CUnit::DoWaterDamage()
 	}
 }
 
-void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& impulse, int weaponId)
+void CUnit::DoDamage(const DamageArray& damages, CUnit* attacker, const float3& impulse, int weaponDefId)
 {
 	if (isDead) {
 		return;
 	}
-
-	residualImpulse += impulse / mass;
-	moveType->ImpulseAdded();
 
 	float damage = damages[armorType];
 
@@ -960,8 +963,10 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 		if (attacker) {
 			SetLastAttacker(attacker);
 			if (flankingBonusMode) {
-				const float3 adir = (attacker->pos - pos).Normalize(); // FIXME -- not the impulse direction?
-				if (flankingBonusMode == 1) {		// mode 1 = global coordinates, mobile
+				const float3 adir = (attacker->pos - pos).SafeNormalize(); // FIXME -- not the impulse direction?
+
+				if (flankingBonusMode == 1) {
+					// mode 1 = global coordinates, mobile
 					flankingBonusDir += adir * flankingBonusMobility;
 					flankingBonusDir.Normalize();
 					flankingBonusMobility = 0.0f;
@@ -988,23 +993,26 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 
 	float3 hitDir = impulse;
 	hitDir.y = 0.0f;
-	hitDir = -hitDir.Normalize();
+	hitDir = -hitDir.SafeNormalize();
 
-	if (script->HasFunction(COBFN_HitByWeaponId)) {
-		script->HitByWeaponId(hitDir, weaponId, /*inout*/ damage);
-	}
-	else {
+	if (script->HasHitByWeaponId()) {
+		script->HitByWeaponId(hitDir, weaponDefId, /*inout*/ damage);
+	} else {
 		script->HitByWeapon(hitDir);
 	}
 
 	float experienceMod = expMultiplier;
-
 	const int paralyzeTime = damages.paralyzeDamageTime;
 	float newDamage = damage;
+	float impulseMult = 1.0f;
 
-	if (luaRules && luaRules->UnitPreDamaged(this, attacker, damage, weaponId,
-			!!damages.paralyzeDamageTime, &newDamage))
+	if (luaRules && luaRules->UnitPreDamaged(this, attacker, damage, weaponDefId,
+			!!damages.paralyzeDamageTime, &newDamage, &impulseMult)) {
 		damage = newDamage;
+	}
+
+	residualImpulse += ((impulse * impulseMult) / mass);
+	moveType->ImpulseAdded();
 
 
 	if (paralyzeTime == 0) { // real damage
@@ -1022,32 +1030,36 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 			if (health > maxHealth) {
 				health = maxHealth;
 			}
-			if (health > paralyzeDamage) {
-				stunned = false;
-			}
 		}
 	}
 	else { // paralyzation
 		experienceMod *= 0.1f; // reduced experience
 		if (damage > 0.0f) {
-			const float maxParaDmg = health + (maxHealth * 0.025f * (float)paralyzeTime);
-			if (paralyzeDamage >= maxParaDmg || stunned) {
+			// paralyzeDamage may not get higher than maxHealth * (paralyzeTime + 1),
+			// which means the unit will be destunned after paralyzeTime seconds.
+			// (maximum paralyzeTime of all paralyzer weapons which recently hit it ofc)
+			const float maxParaDmg = maxHealth + 0.025f * maxHealth * float(paralyzeTime) - paralyzeDamage;
+			if (damage > maxParaDmg) {
+				if (maxParaDmg > 0.0f) {
+					damage = maxParaDmg;
+				} else {
+					damage = 0.0f;
+				}
+			}
+			if (stunned) {
 				experienceMod = 0.0f;
 			}
-
 			paralyzeDamage += damage;
-			if (paralyzeDamage > health) {
+			if (paralyzeDamage > maxHealth) {
 				stunned = true;
 			}
-			paralyzeDamage = std::min(paralyzeDamage, maxParaDmg);
-
 		}
 		else { // paralyzation healing
 			if (paralyzeDamage <= 0.0f) {
 				experienceMod = 0.0f;
 			}
 			paralyzeDamage += damage;
-			if (paralyzeDamage < health) {
+			if (paralyzeDamage < maxHealth) {
 				stunned = false;
 				if (paralyzeDamage < 0.0f) {
 					paralyzeDamage = 0.0f;
@@ -1090,8 +1102,8 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 		}
 	}
 
-	eventHandler.UnitDamaged(this, attacker, damage, weaponId, !!damages.paralyzeDamageTime);
-	eoh->UnitDamaged(*this, attacker, damage);
+	eventHandler.UnitDamaged(this, attacker, damage, weaponDefId, !!damages.paralyzeDamageTime);
+	eoh->UnitDamaged(*this, attacker, damage, weaponDefId, !!damages.paralyzeDamageTime);
 
 	if (health <= 0.0f) {
 		KillUnit(false, false, attacker);
@@ -1633,7 +1645,7 @@ void CUnit::UpdateTerrainType()
 void CUnit::CalculateTerrainType()
 {
 	//Optimization: there's only about one unit that actually needs this information
-	if (!script->HasFunction(COBFN_SetSFXOccupy))
+	if (!script->HasSetSFXOccupy())
 		return;
 
 	if (transporter) {
@@ -1821,12 +1833,7 @@ void CUnit::FinishedBuilding(void)
 
 	if (unitDef->windGenerator > 0.0f) {
 		// start pointing in direction of wind
-		if (wind.GetCurrentStrength() > unitDef->windGenerator) {
-			script->SetSpeed(unitDef->windGenerator, 3000.0f);
-		} else {
-			script->SetSpeed(wind.GetCurrentStrength(), 3000.0f);
-		}
-		script->SetDirection(GetHeadingFromVectorF(-wind.GetCurrentDirection().x, -wind.GetCurrentDirection().z));
+		UpdateWind(wind.GetCurrentDirection().x, wind.GetCurrentDirection().z, wind.GetCurrentStrength());
 	}
 
 	if (unitDef->activateWhenBuilt) {
@@ -1893,12 +1900,7 @@ void CUnit::KillUnit(bool selfDestruct, bool reclaimed, CUnit* attacker, bool sh
 	teamHandler->Team(this->lineage)->LeftLineage(this);
 
 	if (showDeathSequence && (!reclaimed && !beingBuilt)) {
-		string exp;
-		if (selfDestruct) {
-			exp = unitDef->selfDExplosion;
-		} else {
-			exp = unitDef->deathExplosion;
-		}
+		const std::string& exp = (selfDestruct) ? unitDef->selfDExplosion : unitDef->deathExplosion;
 
 		if (!exp.empty()) {
 			const WeaponDef* wd = weaponDefHandler->GetWeapon(exp);
@@ -1925,7 +1927,8 @@ void CUnit::KillUnit(bool selfDestruct, bool reclaimed, CUnit* attacker, bool sh
 
 		// start running the unit's kill-script
 		script->Killed();
-	} else {
+	}
+	else {
 		deathScriptFinished = true;
 	}
 
@@ -1937,7 +1940,7 @@ void CUnit::KillUnit(bool selfDestruct, bool reclaimed, CUnit* attacker, bool sh
 		// permanently deleting this unit obj
 		deathCountdown = 5;
 		stunned = true;
-		paralyzeDamage = 1000000;
+		paralyzeDamage = 100.0f * maxHealth;
 		if (health < 0.0f) {
 			health = 0.0f;
 		}
@@ -2010,9 +2013,6 @@ void CUnit::AddEnergy(float energy, bool handicap)
 
 void CUnit::Activate()
 {
-	//if(unitDef->tidalGenerator>0)
-	//	script->SetSpeed(readmap->tidalStrength * unitDef->tidalGenerator, 3000.0f);
-
 	if (activated)
 		return;
 
@@ -2059,14 +2059,10 @@ void CUnit::Deactivate()
 
 void CUnit::UpdateWind(float x, float z, float strength)
 {
-	if (strength > unitDef->windGenerator) {
-		script->SetSpeed(unitDef->windGenerator, 3000.0f);
-	}
-	else {
-		script->SetSpeed(strength, 3000.0f);
-	}
+	const float heading = GetHeadingFromVectorF(-x, -z);
+	strength = std::min(strength, unitDef->windGenerator);
 
-	script->SetDirection(GetHeadingFromVectorF(-x, -z));
+	script->WindChanged(heading, strength);
 }
 
 
@@ -2193,7 +2189,7 @@ unsigned int CUnit::CalcShadowLOD(unsigned int lastLOD) const
 void CUnit::PostLoad()
 {
 	//HACK:Initializing after load
-	unitDef = unitDefHandler->GetUnitByName(unitDefName);
+	unitDef = unitDefHandler->GetUnitDefByName(unitDefName);
 
 	yardMap = unitDef->yardmaps[buildFacing];
 
@@ -2213,13 +2209,8 @@ void CUnit::PostLoad()
 
 	script->SetSFXOccupy(curTerrainType);
 
-	if (unitDef->windGenerator>0) {
-		if (wind.GetCurrentStrength() > unitDef->windGenerator) {
-			script->SetSpeed(unitDef->windGenerator, 3000.0f);
-		} else {
-			script->SetSpeed(wind.GetCurrentStrength(), 3000.0f);
-		}
-		script->SetDirection(GetHeadingFromVectorF(-wind.GetCurrentDirection().x, -wind.GetCurrentDirection().z));
+	if (unitDef->windGenerator > 0.0f) {
+		UpdateWind(wind.GetCurrentDirection().x, wind.GetCurrentDirection().z, wind.GetCurrentStrength());
 	}
 
 	if (activated) {

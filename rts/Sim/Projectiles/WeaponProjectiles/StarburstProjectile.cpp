@@ -13,7 +13,7 @@
 #include "Sim/Projectiles/ProjectileHandler.h"
 #include "Sim/Projectiles/Unsynced/SmokeTrailProjectile.h"
 #include "Sim/Units/Unit.h"
-#include "Sim/Weapons/WeaponDefHandler.h"
+#include "Sim/Weapons/WeaponDef.h"
 #include "StarburstProjectile.h"
 #include "Sync/SyncTracer.h"
 #include "Rendering/UnitModels/s3oParser.h"
@@ -201,9 +201,9 @@ void CStarburstProjectile::Update(void)
 		} else {
 			dif = dif - dir;
 			dif -= dir * (dif.dot(dir));
-			dif.Normalize();
+			dif.SafeNormalize();
 			dir += dif * tracking;
-			dir.Normalize();
+			dir.SafeNormalize();
 		}
 		speed = dir * curSpeed;
 		if (distanceToTravel != MAX_WORLD_SIZE)
@@ -404,11 +404,12 @@ void CStarburstProjectile::DrawUnitPart(void)
 {
 	glPushMatrix();
 	float3 rightdir;
-	if(dir.y!=1)
+	if(dir.y!=1) {
 		rightdir=dir.cross(UpVector);
+		rightdir.SafeNormalize();
+	}
 	else
 		rightdir=float3(1,0,0);
-	rightdir.Normalize();
 	float3 updir=rightdir.cross(dir);
 
 	CMatrix44f transMatrix(drawPos,-rightdir,updir,dir);

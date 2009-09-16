@@ -22,13 +22,15 @@
 #include "SkirmishAIKey.h"
 
 class ISkirmishAILibrary;
+struct SSkirmishAICallback;
 
 /**
  * The default implementation of ISkirmishAI.
  */
 class CSkirmishAI : public ISkirmishAI {
 public:
-	CSkirmishAI(int teamId, const SkirmishAIKey& skirmishAIKey);
+	CSkirmishAI(int teamId, const SkirmishAIKey& skirmishAIKey,
+		const SSkirmishAICallback* c_callback);
 	virtual ~CSkirmishAI();
 
 	virtual int HandleEvent(int topic, const void* data) const;
@@ -37,6 +39,7 @@ private:
 	int teamId;
 	const SkirmishAIKey key;
 	const ISkirmishAILibrary* library;
+	const char* const timerName;
 };
 
 #endif // _SKIRMISHAI_H

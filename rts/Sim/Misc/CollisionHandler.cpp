@@ -221,7 +221,7 @@ void CCollisionHandler::IntersectPieceTreeHelper(
 	mat.Translate(lmp->pos);
 	mat.RotateY(-lmp->rot[1]);
 	mat.RotateX(-lmp->rot[0]);
-	mat.RotateZ( lmp->rot[2]);
+	mat.RotateZ(-lmp->rot[2]);
 
 	const CollisionVolume* vol = lmp->colvol;
 	const float3& offset = vol->GetOffsets();
@@ -387,7 +387,7 @@ bool CCollisionHandler::IntersectEllipsoid(const CollisionVolume* v, const float
 	}
 
 	// get the ray direction in unit-sphere space
-	const float3 dir = (pii1 - pii0).Normalize();
+	const float3 dir = (pii1 - pii0).SafeNormalize();
 
 	// solves [ x^2 + y^2 + z^2 == r^2 ] for t
 	// (<A> represents dir.dot(dir), equal to 1
@@ -427,7 +427,7 @@ bool CCollisionHandler::IntersectEllipsoid(const CollisionVolume* v, const float
 			return b0;
 		} else {
 			// two solutions for t
-			const float rD = fastmath::sqrt(D);
+			const float rD = fastmath::apxsqrt(D);
 			const float t0 = (-B - rD) * 0.5f;
 			const float t1 = (-B + rD) * 0.5f;
 			// const float t0 = (-B + rD) / (2.0f * A);
@@ -478,7 +478,7 @@ bool CCollisionHandler::IntersectCylinder(const CollisionVolume* v, const float3
 	}
 
 	// ray direction in volume-space
-	const float3 dir = (pi1 - pi0).Normalize();
+	const float3 dir = (pi1 - pi0).SafeNormalize();
 
 	// ray direction in (unit) cylinder-space
 	float3 diir = ZVEC;
@@ -508,7 +508,7 @@ bool CCollisionHandler::IntersectCylinder(const CollisionVolume* v, const float3
 
 			inv.y = v->GetHScales().y;
 			inv.z = v->GetHScales().z;
-			diir = (pii1 - pii0).Normalize();
+			diir = (pii1 - pii0).SafeNormalize();
 
 			n0.x = -1.0f; // left
 			n1.x =  1.0f; // right
@@ -526,7 +526,7 @@ bool CCollisionHandler::IntersectCylinder(const CollisionVolume* v, const float3
 
 			inv.x = v->GetHScales().x;
 			inv.z = v->GetHScales().z;
-			diir = (pii1 - pii0).Normalize();
+			diir = (pii1 - pii0).SafeNormalize();
 
 			n0.y =  1.0f; // top
 			n1.y = -1.0f; // bottom
@@ -544,7 +544,7 @@ bool CCollisionHandler::IntersectCylinder(const CollisionVolume* v, const float3
 
 			inv.x = v->GetHScales().x;
 			inv.y = v->GetHScales().y;
-			diir = (pii1 - pii0).Normalize();
+			diir = (pii1 - pii0).SafeNormalize();
 
 			n0.z =  1.0f; // front
 			n1.z = -1.0f; // back
@@ -580,7 +580,7 @@ bool CCollisionHandler::IntersectCylinder(const CollisionVolume* v, const float3
 			s0 = (p0 - pi0).SqLength();
 			b0 = (s0 < segLenSq && (p0[pAx] > -ahs[pAx] && p0[pAx] < ahs[pAx]));
 		} else {
-			rd = fastmath::sqrt(d);
+			rd = fastmath::apxsqrt(d);
 			t0 = (-b - rd) / (2.0f * a);
 			t1 = (-b + rd) / (2.0f * a);
 			p0 = (pii0 + (diir * t0)) * inv;
@@ -654,7 +654,7 @@ bool CCollisionHandler::IntersectBox(const CollisionVolume* v, const float3& pi0
 	float t1 =  0.0f;
 	float t2 =  0.0f;
 
-	const float3 dir = (pi1 - pi0).Normalize();
+	const float3 dir = (pi1 - pi0).SafeNormalize();
 
 	if (dir.x > -EPS && dir.x < EPS) {
 		if (pi0.x < -v->GetHScales().x  ||  pi0.x > v->GetHScales().x) {

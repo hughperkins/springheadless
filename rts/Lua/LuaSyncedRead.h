@@ -53,6 +53,7 @@ class LuaSyncedRead {
 
 		static int GetPlayerInfo(lua_State* L); // no name for synced scripts
 		static int GetPlayerControlledUnit(lua_State* L);
+		static int GetAIInfo(lua_State* L);
 
 		static int GetTeamInfo(lua_State* L);
 		static int GetTeamResources(lua_State* L);
@@ -147,7 +148,6 @@ class LuaSyncedRead {
 		static int GetUnitDefDimensions(lua_State* L);
 
 		static int GetAllFeatures(lua_State* L);
-		static int GetFeatureList(lua_State* L);
 
 		static int ValidFeatureID(lua_State* L);
 		static int GetFeatureDefID(lua_State* L);

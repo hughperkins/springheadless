@@ -146,12 +146,20 @@ bool CLuaHandle::LoadCode(const string& code, const string& debug)
 {
 	lua_settop(L, 0);
 
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+	// do not signal floating point exceptions in user Lua code
+	feclearexcept(streflop::FPU_Exceptions(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW));
+#endif
+
 	int error;
 	error = luaL_loadbuffer(L, code.c_str(), code.size(), debug.c_str());
 	if (error != 0) {
 		logOutput.Print("Lua LoadCode loadbuffer error = %i, %s, %s\n",
 		                error, debug.c_str(), lua_tostring(L, -1));
 		lua_pop(L, 1);
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+		feraiseexcept(streflop::FPU_Exceptions(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW));
+#endif
 		return false;
 	}
 
@@ -159,6 +167,10 @@ bool CLuaHandle::LoadCode(const string& code, const string& debug)
 	SetActiveHandle();
 	error = lua_pcall(L, 0, 0, 0);
 	SetActiveHandle(orig);
+
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+	feraiseexcept(streflop::FPU_Exceptions(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW));
+#endif
 
 	if (error != 0) {
 		logOutput.Print("Lua LoadCode pcall error = %i, %s, %s\n",
@@ -199,6 +211,11 @@ int CLuaHandle::SetupTraceback()
 
 int CLuaHandle::RunCallInTraceback(int inArgs, int outArgs, int errfuncIndex, std::string& traceback)
 {
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+	// do not signal floating point exceptions in user Lua code
+	feclearexcept(streflop::FPU_Exceptions(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW));
+#endif
+
 	CLuaHandle* orig = activeHandle;
 	SetActiveHandle();
 	const int error = lua_pcall(L, inArgs, outArgs, errfuncIndex);
@@ -217,6 +234,10 @@ int CLuaHandle::RunCallInTraceback(int inArgs, int outArgs, int errfuncIndex, st
 		// log only errors that lead to a crash
 		callinErrors += (error == 2);
 	}
+
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+	feraiseexcept(streflop::FPU_Exceptions(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW));
+#endif
 	return error;
 }
 
@@ -1072,6 +1093,7 @@ bool CLuaHandle::RecvLuaMsg(const string& msg, int playerID)
 	}
 
 	if (!lua_isboolean(L, -1)) {
+		lua_pop(L, 1);
 		return false;
 	}
 	const bool retval = !!lua_toboolean(L, -1);
@@ -1618,6 +1640,34 @@ bool CLuaHandle::MouseWheel(bool up, float value)
 	return retval;
 }
 
+bool CLuaHandle::JoystickEvent(const std::string& event, int val1, int val2)
+{
+	if (!CheckModUICtrl()) {
+		return false;
+	}
+	LUA_CALL_IN_CHECK(L);
+	lua_checkstack(L, 4);
+	const LuaHashString cmdStr(event);
+	if (!PushUnsyncedCallIn(cmdStr)) {
+		return false; // the call is not defined, do not take the event
+	}
+
+	lua_pushnumber(L, val1);
+	lua_pushnumber(L, val2);
+
+	// call the function
+	if (!RunCallInUnsynced(cmdStr, 2, 1)) {
+		return false;
+	}
+
+	if (!lua_isboolean(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	const bool retval = !!lua_toboolean(L, -1);
+	lua_pop(L, 1);
+	return retval;
+}
 
 bool CLuaHandle::IsAbove(int x, int y)
 {

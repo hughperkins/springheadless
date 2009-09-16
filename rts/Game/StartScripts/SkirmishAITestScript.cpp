@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include "StdAfx.h"
-#include "ExternalAI/EngineOutHandler.h"
+#include "ExternalAI/SkirmishAIHandler.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Lua/LuaParser.h"
 #include "Map/MapParser.h"
@@ -15,35 +15,33 @@
 #include "LogOutput.h"
 #include "FileSystem/FileSystem.h"
 #include "Game/GameSetup.h"
+#include "Game/GameServer.h"
 #include "Game/PlayerHandler.h"
+#include "Game/Server/GameSkirmishAI.h"
+#include "NetProtocol.h"
 #include "mmgr.h"
 #include "Exceptions.h"
 
+const std::string CSkirmishAITestScript::SCRIPT_NAME_PRELUDE = "Skirmish AI test: ";
 
-CSkirmishAITestScript::CSkirmishAITestScript(const SkirmishAIKey& k, const std::map<std::string, std::string>& opts):
-	CScript(
-		std::string("Skirmish AI test: ")
-		+ std::string(k.GetShortName()) + std::string(" ")
-		+ std::string(k.GetVersion())
-	),
-	key(k),
-	options(opts)
+CSkirmishAITestScript::CSkirmishAITestScript(const SkirmishAIData& aiData):
+	CScript(SCRIPT_NAME_PRELUDE + aiData.shortName + std::string(" ") + aiData.version)
+	, aiData(aiData)
 {
 }
 
 
-CSkirmishAITestScript::~CSkirmishAITestScript(void) {}
+CSkirmishAITestScript::~CSkirmishAITestScript() {}
 
-void CSkirmishAITestScript::GameStart(void)
+void CSkirmishAITestScript::GameStart()
 {
 	// make sure CSelectedUnits::AiOrder()
 	// still works without a setup script
-	teamHandler->Team(skirmishAI_teamId)->isAI = true;
-	teamHandler->Team(skirmishAI_teamId)->skirmishAIKey = key;
-	teamHandler->Team(skirmishAI_teamId)->skirmishAIOptions = options;
-	teamHandler->Team(skirmishAI_teamId)->leader = player_teamId;
-
-	playerHandler->Player(player_teamId)->SetControlledTeams();
+	teamHandler->Team(skirmishAI_teamId)->leader = player_Id;
+	gameServer->teams[skirmishAI_teamId].leader  = player_Id;
+	gameServer->teams[skirmishAI_teamId].active  = true;
+	gameServer->teams[player_teamId].leader  = player_Id;
+	gameServer->teams[player_teamId].active  = true;
 
 	teamHandler->Team(player_teamId)->energy        = 1000;
 	teamHandler->Team(player_teamId)->energyStorage = 1000;
@@ -55,10 +53,20 @@ void CSkirmishAITestScript::GameStart(void)
 	teamHandler->Team(skirmishAI_teamId)->metal         = 1000;
 	teamHandler->Team(skirmishAI_teamId)->metalStorage  = 1000;
 
+	aiData.name       = aiData.shortName + "_" + aiData.version;
+	aiData.team       = skirmishAI_teamId;
+	aiData.hostPlayer = player_Id;
+
+	const size_t skirmishAIId = gameServer->nextSkirmishAIId++;
+	gameServer->ais[skirmishAIId] = aiData;
+	skirmishAIHandler.AddSkirmishAI(aiData, skirmishAIId);
+
+	playerHandler->Player(player_Id)->SetControlledTeams();
+
 	// do not instantiate an AI when watching a
 	// demo recorded from a SkirmishAI test-script
-	if (!gameSetup->hostDemo && !key.IsUnspecified()) {
-		eoh->CreateSkirmishAI(skirmishAI_teamId, key);
+	if (!gameSetup->hostDemo) {
+		skirmishAIHandler.CreateLocalSkirmishAI(skirmishAIId);
 	}
 
 	const std::string startUnit0 = sideParser.GetStartUnit(0, "");

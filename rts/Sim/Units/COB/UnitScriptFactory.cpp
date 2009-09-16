@@ -17,7 +17,7 @@
 
 CUnitScript* CUnitScriptFactory::CreateScript(const std::string& name, CUnit* unit)
 {
-	std::string ext = StringToLower(filesystem.GetExtension(name));
+	std::string ext = filesystem.GetExtension(name);
 	CUnitScript* script = NULL;
 
 	if (ext == "cob") {
@@ -31,7 +31,7 @@ CUnitScript* CUnitScriptFactory::CreateScript(const std::string& name, CUnit* un
 	}
 
 	if (!script) {
-		script = new CNullUnitScript(unit);
+		script = &CNullUnitScript::value;
 	}
 
 	return script;

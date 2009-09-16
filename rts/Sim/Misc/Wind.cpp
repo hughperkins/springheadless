@@ -71,7 +71,7 @@ void CWind::Update()
 		curWind=oldWind*(1.0-mod)+newWind*mod;
 		curStrength=curWind.Length();
 		curDir=curWind;
-		curDir.Normalize();
+		curDir.SafeNormalize();
 		status++;
 	} else if(status==901) {
 		status=0;

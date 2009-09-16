@@ -49,7 +49,7 @@ CCameraHandler::CCameraHandler()
 	if (!modeName.empty()) {
 		modeIndex = GetModeIndex(modeName);
 	} else {
-		modeIndex = configHandler->Get("CamMode", 1);
+		modeIndex = configHandler->Get("CamMode", 5);
 	}
 	const unsigned int mode =
 		(unsigned int)std::max(0, std::min(modeIndex, (int)camCtrls.size() - 1));
@@ -89,10 +89,6 @@ CCameraHandler::~CCameraHandler()
 
 void CCameraHandler::UpdateCam()
 {
-	camera->up.x = 0.0f;
-	camera->up.y = 1.0f;
-	camera->up.z = 0.0f;
-
 	const float  wantedCamFOV = currCamCtrl->GetFOV();
 	const float3 wantedCamPos = currCamCtrl->GetPos();
 	const float3 wantedCamDir = currCamCtrl->GetDir();

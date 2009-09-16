@@ -1,10 +1,11 @@
 /**
- * @file GlobalStuff.h
- * @brief Globally accessible stuff
+ * @file GlobalUnsynced.h
+ * @brief Globally accessible unsynced stuff
  *
- * Contains the synced and unsynced global
- * data accessed by the program
+ * Contains globally accessible
+ * stuff that does not remain synced
  */
+
 #ifndef GLOBALSTUFF_H
 #define GLOBALSTUFF_H
 
@@ -24,8 +25,8 @@ class CGlobalUnsyncedStuff
 	CR_DECLARE(CGlobalUnsyncedStuff);
 
 public:
-	CGlobalUnsyncedStuff();  //!< Constructor
-	~CGlobalUnsyncedStuff(); //!< Destructor
+	CGlobalUnsyncedStuff();
+	~CGlobalUnsyncedStuff();
 
 	int    usRandInt();    //!< Unsynced random int
 	float  usRandFloat();  //!< Unsynced random float
@@ -208,22 +209,6 @@ public:
 	 * Especially some ATI cards report that they support NPOTs, but they don't (or just very limited).
 	 */
 	bool supportNPOTs;
-
-	/**
-	 * @brief quit automatically?
-	 *
-	 * If set, quit immediately on game over or if gameTime > quitTime,
-	 * whichever comes first.
-	 */
-	bool autoQuit;
-
-	/**
-	 * @brief quit time
-	 *
-	 * If autoQuit is set, the host quits if gameTime > quitTime.
-	 * (This automatically causes all other clients to quit too.)
-	 */
-	float quitTime;
 
 	/**
 	 * @brief dual screen mode

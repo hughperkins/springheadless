@@ -157,7 +157,7 @@ CBuilderCAI::CBuilderCAI(CUnit* owner):
 	map<int, string>::const_iterator bi;
 	for (bi = fac->unitDef->buildOptions.begin(); bi != fac->unitDef->buildOptions.end(); ++bi) {
 		const string name = bi->second;
-		const UnitDef* ud = unitDefHandler->GetUnitByName(name);
+		const UnitDef* ud = unitDefHandler->GetUnitDefByName(name);
 		if (ud == NULL) {
 		  string errmsg = "MOD ERROR: loading ";
 		  errmsg += name.c_str();
@@ -314,11 +314,16 @@ void CBuilderCAI::GiveCommandReal(const Command& c, bool fromSynced)
 		if (c.params.size() < 3) {
 			return;
 		}
+
 		BuildInfo bi;
-		bi.pos = float3(c.params[0],c.params[1],c.params[2]);
-		if(c.params.size()==4) bi.buildFacing=int(c.params[3]);
-		bi.def = unitDefHandler->GetUnitByName(boi->second);
-		bi.pos=helper->Pos2BuildPos(bi);
+		bi.pos = float3(c.params[0], c.params[1], c.params[2]);
+
+		if (c.params.size() == 4)
+			bi.buildFacing = int(abs(c.params[3])) % 4;
+
+		bi.def = unitDefHandler->GetUnitDefByName(boi->second);
+		bi.pos = helper->Pos2BuildPos(bi);
+
 		if (!owner->unitDef->canmove) {
 			const CBuilder* builder = (CBuilder*)owner;
 			const float dist = f3Len(builder->pos - bi.pos);
@@ -374,7 +379,7 @@ void CBuilderCAI::SlowUpdate()
 
 	map<int, string>::iterator boi = buildOptions.find(c.id);
 	if (!owner->beingBuilt && boi != buildOptions.end()) {
-		const UnitDef* ud = unitDefHandler->GetUnitByName(boi->second);
+		const UnitDef* ud = unitDefHandler->GetUnitDefByName(boi->second);
 		const float radius = GetUnitDefRadius(ud, c.id);
 		if (inCommand) {
 			if (building) {
@@ -432,7 +437,7 @@ void CBuilderCAI::SlowUpdate()
 									logOutput.Print("%s: Build pos blocked", owner->unitDef->humanName.c_str());
 									logOutput.SetLastMsgPos(owner->pos);
 								}
-								helper->BuggerOff(build.pos, radius);
+								helper->BuggerOff(build.pos, radius, false);
 								NonMoving();
 							}
 						}
@@ -449,15 +454,18 @@ void CBuilderCAI::SlowUpdate()
 			}
 		} else {		//!inCommand
 			BuildInfo bi;
-			bi.pos.x=floor(c.params[0]/SQUARE_SIZE+0.5f)*SQUARE_SIZE;
-			bi.pos.z=floor(c.params[2]/SQUARE_SIZE+0.5f)*SQUARE_SIZE;
-			bi.pos.y=c.params[1];
-			CFeature* f=0;
-			if (c.params.size()==4)
-				bi.buildFacing = int(c.params[3]);
-			bi.def = unitDefHandler->GetUnitByName(boi->second);
+			bi.pos.x = floor(c.params[0] / SQUARE_SIZE + 0.5f) * SQUARE_SIZE;
+			bi.pos.z = floor(c.params[2] / SQUARE_SIZE + 0.5f) * SQUARE_SIZE;
+			bi.pos.y = c.params[1];
 
-			uh->TestUnitBuildSquare(bi,f,owner->allyteam);
+			if (c.params.size() == 4)
+				bi.buildFacing = int(abs(c.params[3])) % 4;
+
+			bi.def = unitDefHandler->GetUnitDefByName(boi->second);
+
+			CFeature* f = 0;
+			uh->TestUnitBuildSquare(bi, f, owner->allyteam);
+
 			if (f) {
 				if (!owner->unitDef->canReclaim || !f->def->reclaimable) {
 					// FIXME user shouldn't be able to queue buildings on top of features
@@ -601,37 +609,42 @@ void CBuilderCAI::ExecuteCapture(Command& c)
 	assert(owner->unitDef->canCapture);
 	CBuilder* fac = (CBuilder*) owner;
 
-	if (c.params.size() == 1 || c.params.size() == 5) { //capture unit
+	if (c.params.size() == 1 || c.params.size() == 5) {
+		// capture unit
 		CUnit* unit = uh->units[(int)c.params[0]];
-		if(c.params.size() == 5) {
-			float3 pos(c.params[1], c.params[2], c.params[3]);
-			float radius=c.params[4]+100; // do not walk too far outside capture area
-			if(unit && ((pos-unit->pos).SqLength2D()>radius*radius ||
+
+		if (c.params.size() == 5) {
+			const float3 pos(c.params[1], c.params[2], c.params[3]);
+			const float radius = c.params[4] + 100; // do not walk too far outside capture area
+
+			if (unit && ((pos - unit->pos).SqLength2D() > (radius * radius) ||
 				(fac->curCapture == unit && unit->isMoving && !ObjInBuildRange(unit)))) {
 				StopMove();
 				FinishCommand();
 				return;
 			}
 		}
-		if (unit && unit->unitDef->capturable && unit->team != owner->team && UpdateTargetLostTimer((int) c.params[0])) {
+		if (unit && unit->unitDef->capturable && unit->team != owner->team && UpdateTargetLostTimer(unit->id)) {
 			if (f3SqDist(unit->pos, fac->pos) < Square(fac->buildDistance + unit->radius - 8)) {
 				StopMove();
 				fac->SetCaptureTarget(unit);
 				owner->moveType->KeepPointingTo(unit->pos, fac->buildDistance * 0.9f + unit->radius, false);
 			} else {
 				if (f3SqDist(goalPos, unit->pos) > 1) {
-					SetGoal(unit->pos,owner->pos, fac->buildDistance * 0.9f + unit->radius);
+					SetGoal(unit->pos, owner->pos, fac->buildDistance * 0.9f + unit->radius);
 				}
 			}
 		} else {
 			StopMove();
 			FinishCommand();
 		}
-	}
-	else { // capture area
-		float3 pos(c.params[0], c.params[1], c.params[2]);
-		float radius = c.params[3];
+	} else if (c.params.size() == 4) {
+		// area capture
+		const float3 pos(c.params[0], c.params[1], c.params[2]);
+		const float radius = c.params[3];
+
 		fac->StopBuild();
+
 		if (FindCaptureTargetAndCapture(pos, radius, c.options, (c.options & META_KEY))) {
 			inCommand = false;
 			SlowUpdate();
@@ -640,6 +653,8 @@ void CBuilderCAI::ExecuteCapture(Command& c)
 		if (!(c.options & ALT_KEY)) {
 			FinishCommand();
 		}
+	} else {
+		FinishCommand();
 	}
 	return;
 }
@@ -827,12 +842,11 @@ void CBuilderCAI::ExecuteReclaim(Command& c)
 		// area reclaim
 		const float3 pos(c.params[0], c.params[1], c.params[2]);
 		const float radius = c.params[3];
-		const bool recAnyTeam = ((c.options & CONTROL_KEY) != 0);
 		const bool recUnits = ((c.options & META_KEY) != 0);
 		RemoveUnitFromReclaimers(owner);
 		RemoveUnitFromFeatureReclaimers(owner);
 		fac->StopBuild();
-		if (FindReclaimTargetAndReclaim(pos, radius, c.options, true, recAnyTeam, recUnits, false, false)) {
+		if (FindReclaimTargetAndReclaim(pos, radius, c.options, true, true, recUnits, false, false)) {
 			inCommand=false;
 			SlowUpdate();
 			return;
@@ -1063,7 +1077,7 @@ void CBuilderCAI::ExecuteRestore(Command& c)
 }
 
 
-int CBuilderCAI::GetDefaultCmd(CUnit* pointed, CFeature* feature)
+int CBuilderCAI::GetDefaultCmd(const CUnit* pointed, const CFeature* feature)
 {
 	if (pointed) {
 		if (!teamHandler->Ally(gu->myAllyTeam, pointed->allyteam)) {
@@ -1302,13 +1316,16 @@ bool CBuilderCAI::FindReclaimTargetAndReclaim(const float3& pos,
 		const std::vector<CFeature*> features = qf->GetFeaturesExact(pos, radius);
 		for (std::vector<CFeature*>::const_iterator fi = features.begin(); fi != features.end(); ++fi) {
 			const CFeature* f = *fi;
-			if (f->def->reclaimable && (!recNonRez || !(f->def->destructable && f->createdFromUnit != "")) &&
+			if (f->def->reclaimable && f->def->autoreclaim && (!recNonRez || !(f->def->destructable && f->createdFromUnit != "")) &&
 				(recAnyTeam || (f->allyteam != owner->allyteam))) {
 				float dist = f3SqLen(f->pos - owner->pos);
 				if ((dist < bestDist) &&
 					(noResCheck ||
 					((f->def->metal  > 0.0f) && (team->metal  < team->metalStorage)) ||
 					((f->def->energy > 0.0f) && (team->energy < team->energyStorage)))) {
+					if (!f->IsInLosForAllyTeam(owner->allyteam)) {
+						continue;
+					}
 					if (!owner->unitDef->canmove && !ObjInBuildRange(f)) {
 						continue;
 					}
@@ -1359,8 +1376,12 @@ bool CBuilderCAI::FindResurrectableFeatureAndResurrect(const float3& pos,
 	for (fi = features.begin(); fi != features.end(); ++fi) {
 		const CFeature* f = *fi;
 		if (f->def->destructable && f->createdFromUnit != "") {
-			if(freshOnly && f->reclaimLeft < 1.0f && f->resurrectProgress <= 0.0f)
+			if (!f->IsInLosForAllyTeam(owner->allyteam)) {
 				continue;
+			}
+			if (freshOnly && f->reclaimLeft < 1.0f && f->resurrectProgress <= 0.0f) {
+				continue;
+			}
 			float dist = f3SqLen(f->pos - owner->pos);
 			if (dist < bestDist) {
 				// dont lock-on to units outside of our reach (for immobile builders)
@@ -1563,7 +1584,7 @@ bool CBuilderCAI::FindRepairTargetAndRepair(const float3& pos, float radius,
 
 void CBuilderCAI::DrawCommands(void)
 {
-	if(uh->limitDgun && owner->unitDef->isCommander) {
+	if (uh->limitDgun && owner->unitDef->isCommander) {
 		glColor4f(1.0f, 1.0f, 1.0f, 0.6f);
 		glSurfaceCircle(teamHandler->Team(owner->team)->startPos, uh->dgunRadius, 40);
 	}
@@ -1576,6 +1597,40 @@ void CBuilderCAI::DrawCommands(void)
 
 	CCommandQueue::iterator ci;
 	for (ci = commandQue.begin(); ci != commandQue.end(); ++ci) {
+		if (ci->id < 0) {
+			map<int, string>::const_iterator boi = buildOptions.find(ci->id);
+
+			if (boi != buildOptions.end()) {
+				BuildInfo bi;
+				bi.def = unitDefHandler->GetUnitDefByID(-(ci->id));
+
+				if (ci->params.size() == 4) {
+					bi.buildFacing = int(abs(ci->params[3])) % 4;
+				}
+
+				bi.pos = float3(ci->params[0], ci->params[1], ci->params[2]);
+				bi.pos = helper->Pos2BuildPos(bi);
+
+				cursorIcons.AddBuildIcon(ci->id, bi.pos, owner->team, bi.buildFacing);
+				lineDrawer.DrawLine(bi.pos, cmdColors.build);
+
+				// draw metal extraction range
+				if (bi.def->extractRange > 0) {
+					lineDrawer.Break(bi.pos, cmdColors.build);
+					glColor4fv(cmdColors.rangeExtract);
+
+					if (bi.def->extractSquare) {
+						glSurfaceSquare(bi.pos, bi.def->extractRange, bi.def->extractRange);
+					} else {
+						glSurfaceCircle(bi.pos, bi.def->extractRange, 40);
+					}
+
+					lineDrawer.Restart();
+				}
+			}
+			continue;
+		}
+
 		switch(ci->id) {
 			case CMD_MOVE: {
 				const float3 endPos(ci->params[0], ci->params[1], ci->params[2]);
@@ -1710,35 +1765,6 @@ void CBuilderCAI::DrawCommands(void)
 			}
 		}
 
-		if (ci->id < 0) {
-			map<int, string>::const_iterator boi = buildOptions.find(ci->id);
-			if (boi != buildOptions.end()) {
-				BuildInfo bi;
-				bi.def = unitDefHandler->GetUnitByID(-(ci->id));
-				if (ci->params.size() == 4) {
-					bi.buildFacing = int(ci->params[3]);
-				}
-				bi.pos = float3(ci->params[0], ci->params[1], ci->params[2]);
-				bi.pos = helper->Pos2BuildPos(bi);
-
-				cursorIcons.AddBuildIcon(ci->id, bi.pos, owner->team, bi.buildFacing);
-				lineDrawer.DrawLine(bi.pos, cmdColors.build);
-
-				// draw metal extraction range
-				if (bi.def->extractRange > 0) {
-					lineDrawer.Break(bi.pos, cmdColors.build);
-					glColor4fv(cmdColors.rangeExtract);
-
-					if (bi.def->extractSquare) {
-						glSurfaceSquare(bi.pos, bi.def->extractRange, bi.def->extractRange);
-					} else {
-						glSurfaceCircle(bi.pos, bi.def->extractRange, 40);
-					}
-
-					lineDrawer.Restart();
-				}
-			}
-		}
 	}
 	lineDrawer.FinishPath();
 }

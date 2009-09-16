@@ -1,10 +1,13 @@
 #ifndef SELECT_MENU
 #define SELECT_MENU
 
+#include "aGui/GuiElement.h"
 #include "GameController.h"
 
 class ClientSetup;
-class CglList;
+union SDL_Event;
+class SelectionWidget;
+class ConnectWindow;
 
 /**
 @brief User prompt for options when no script is given
@@ -13,32 +16,33 @@ When no setupscript is given, this will show a menu to select server address (wh
 If in host mode, it will show lists for Map, Mod and Script.
 When everything is selected, it will generate a gamesetup-script and start CPreGame
 */
-class SelectMenu : public CGameController
+class SelectMenu : public CGameController, public agui::GuiElement
 {
 public:
 	SelectMenu(bool server);
+	~SelectMenu();
 
 	bool Draw();
-	int KeyPressed(unsigned short k, bool isRepeat);
 	bool Update();
 
-	void ShowMapList();
-	void ShowScriptList();
-	void ShowModList();
+private:
+	void Single();
+	void Settings();
+	void Multi();
+	void Quit();
+	void ShowConnectWindow(bool show);
+	void DirectConnect(const std::string& addr);
 
-	/// Callback functions for CglList
+	bool HandleEventSelf(const SDL_Event& ev);
+
 	void SelectScript(const std::string& s);
 	void SelectMap(const std::string& s);
 	void SelectMod(const std::string& s);
 
-private:
-	std::string userScript;
-	std::string userMap;
-	std::string userMod;
-
-	bool addressKnown;
 	ClientSetup* mySettings;
-	CglList* showList;
+
+	ConnectWindow* conWindow;
+	SelectionWidget* selw;
 };
 
 #endif

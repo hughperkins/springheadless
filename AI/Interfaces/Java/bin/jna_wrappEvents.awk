@@ -20,6 +20,9 @@ BEGIN {
 	# define the field splitter(-regex)
 	FS = "[ \t]+";
 
+	# Used by other scripts
+	JAVA_MODE = 1;
+
 	# These vars can be assigned externally, see file header.
 	# Set the default values if they were not supplied on the command line.
 	if (!GENERATED_SOURCE_DIR) {
@@ -128,13 +131,13 @@ function printOOAIFactoryHeader(outFile) {
 	print(" * @author	hoijui") >> outFile;
 	print(" * @version	GENERATED") >> outFile;
 	print(" */") >> outFile;
-	print("public abstract class OOAIFactory implements AI {") >> outFile;
+	print("public abstract class " myOOAIFactoryClass " implements AI {") >> outFile;
 	print("") >> outFile;
 	print("	private Map<Integer, OOAI> ais = new HashMap<Integer, OOAI>();") >> outFile;
 	print("	private Map<Integer, OOAICallback> ooClbs = new HashMap<Integer, OOAICallback>();") >> outFile;
 	print("") >> outFile;
 	print("	@Override") >> outFile;
-	print("	public final int init(int teamId, AICallback callback) {") >> outFile;
+	print("	public int init(int teamId, AICallback callback) {") >> outFile;
 	print("") >> outFile;
 	print("		OOAICallback ooCallback = OOAICallback.getInstance(callback, teamId);") >> outFile;
 	print("		OOAI ai = createAI(teamId, ooCallback);") >> outFile;
@@ -145,7 +148,7 @@ function printOOAIFactoryHeader(outFile) {
 	print("	}") >> outFile;
 	print("") >> outFile;
 	print("	@Override") >> outFile;
-	print("	public final int release(int teamId) {") >> outFile;
+	print("	public int release(int teamId) {") >> outFile;
 	print("") >> outFile;
 	print("		OOAI ai = ais.remove(teamId);") >> outFile;
 	print("		ooClbs.remove(teamId);") >> outFile;
@@ -153,7 +156,7 @@ function printOOAIFactoryHeader(outFile) {
 	print("	}") >> outFile;
 	print("") >> outFile;
 	print("	@Override") >> outFile;
-	print("	public final int handleEvent(int teamId, int topic, Pointer event) {") >> outFile;
+	print("	public int handleEvent(int teamId, int topic, Pointer event) {") >> outFile;
 	print("") >> outFile;
 	print("		int _ret = -1;") >> outFile;
 	print("") >> outFile;
@@ -204,7 +207,7 @@ function printEventOO(evtIndex) {
 		if (type_jna == "int[]") {
 			# Pointer.getIntArray(int offset, int arraySize)
 			# we assume that the next param contians the array size
-			name = name ".getIntArray(0, " evtsMembers_name[evtIndex, m+1]; ")";
+			name = name ".getIntArray(0, " evtsMembers_name[evtIndex, m+1] ")";
 		}
 		paramsEvt = paramsEvt ", evt." name;
 	}
@@ -357,8 +360,18 @@ function printEventJavaCls(evtIndex) {
 		}
 		print("		}") >> javaFile;
 	} else {
-		print("		super(memory);") >> javaFile;
-		print("		read();") >> javaFile;
+		if (evtsNumMembers[evtIndex] == 0) {
+			print("		// JNA thinks a 0 size struct is an error,") >> javaFile;
+			print("		// when it evaluates the size,") >> javaFile;
+			print("		// so we set it manually to 1,") >> javaFile;
+			print("		// because 0 would fail.") >> javaFile;
+			print("		// This workaround is no longer possible sinze JNA 3.2.") >> javaFile;
+			print("		// Therefore we require all structs to be non empty,") >> javaFile;
+			print("		throw new RuntimeException(\"" className " error:.AI event structs have to be of size > 0 (ie. no empty stucts/ no structs with 0 members)\");") >> javaFile;
+		} else {
+			print("		super(memory);") >> javaFile;
+			print("		read();") >> javaFile;
+		}
 	}
 	print("	}") >> javaFile;
 	print("") >> javaFile;

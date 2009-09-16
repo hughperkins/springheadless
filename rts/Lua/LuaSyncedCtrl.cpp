@@ -172,6 +172,7 @@ bool LuaSyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(AddGrass);
 	REGISTER_LUA_CFUNC(RemoveGrass);
 
+	REGISTER_LUA_CFUNC(SetFeatureAlwaysVisible);
 	REGISTER_LUA_CFUNC(SetFeatureHealth);
 	REGISTER_LUA_CFUNC(SetFeatureReclaim);
 	REGISTER_LUA_CFUNC(SetFeatureResurrect);
@@ -413,81 +414,6 @@ static CTeam* ParseTeam(lua_State* L, const char* caller, int index)
 	}
 	return team;
 }
-
-
-static CUnit* CheckUnitID(lua_State* L, int index)
-{
-	luaL_checknumber(L, index);
-	const int unitID = lua_toint(L, index);
-	if ((unitID < 0) || (static_cast<size_t>(unitID) >= uh->MaxUnits())) {
-		luaL_error(L, "Bad unitID: %d\n", unitID);
-	}
-	CUnit* unit = uh->units[unitID];
-	if (unit == NULL) {
-		luaL_error(L, "Bad unitID: %d\n", unitID);
-	}
-	return unit;
-}
-
-
-static CPlayer* CheckPlayerID(lua_State* L, int index)
-{
-	luaL_checknumber(L, index);
-	const int playerID = lua_toint(L, index);
-	if ((playerID < 0) || (playerID >= playerHandler->ActivePlayers())) {
-		luaL_error(L, "Bad playerID: %d\n", playerID);
-	}
-	CPlayer* player = playerHandler->Player(playerID);
-	if (player == NULL) {
-		luaL_error(L, "Bad playerID: %d\n", playerID);
-	}
-	return player;
-}
-
-
-static int ParseFloatArray(lua_State* L, float* array, int size)
-{
-	if (!lua_istable(L, -1)) {
-		return -1;
-	}
-	int index = 0;
-	const int table = lua_gettop(L);
-	for (lua_pushnil(L); lua_next(L, table) != 0; lua_pop(L, 1)) {
-		if (!lua_isnumber(L, -1)) {
-			logOutput.Print("LUA: error parsing numeric array\n");
-			lua_pop(L, 2); // pop the value and the key
-			return -1;
-		}
-		if (index < size) {
-			array[index] = lua_tofloat(L, -1);
-			index++;
-		}
-	}
-	return index;
-}
-
-
-static int ParseFacing(lua_State* L, const char* caller, int index)
-{
-	if (lua_israwnumber(L, index)) {
-		return lua_toint(L, index);
-	}
-	else if (lua_israwstring(L, index)) {
-		const string dir = StringToLower(lua_tostring(L, index));
-		if (dir == "s") { return 0; }
-		if (dir == "e") { return 1; }
-		if (dir == "n") { return 2; }
-		if (dir == "w") { return 3; }
-		if (dir == "south") { return 0; }
-		if (dir == "east")  { return 1; }
-		if (dir == "north") { return 2; }
-		if (dir == "west")  { return 3; }
-		luaL_error(L, "%s(): bad facing string", caller);
-	}
-	luaL_error(L, "%s(): bad facing parameter", caller);
-	return 0;
-}
-
 
 /******************************************************************************/
 /******************************************************************************/
@@ -767,14 +693,14 @@ int LuaSyncedCtrl::CreateUnit(lua_State* L)
 	const UnitDef* unitDef = NULL;
 	if (lua_israwstring(L, 1)) {
 		const string defName = lua_tostring(L, 1);
-		unitDef = unitDefHandler->GetUnitByName(defName);
+		unitDef = unitDefHandler->GetUnitDefByName(defName);
 		if (unitDef == NULL) {
 			luaL_error(L, "CreateUnit(): bad unitDef name: %s", defName.c_str());
 			return 0;
 		}
 	} else if (lua_israwnumber(L, 1)) {
 		const int defID = lua_toint(L, 1);
-		unitDef = unitDefHandler->GetUnitByID(defID);
+		unitDef = unitDefHandler->GetUnitDefByID(defID);
 		if (unitDef == NULL) {
 			luaL_error(L, "CreateUnit(): bad unitDef ID: %i", defID);
 			return 0;
@@ -790,7 +716,7 @@ int LuaSyncedCtrl::CreateUnit(lua_State* L)
 	//clamps the pos in the map boundings
 	pos.CheckInBounds(); //TODO: fix unit init code to work offmap
 
-	const int facing = ParseFacing(L, __FUNCTION__, 5);
+	const int facing = LuaUtils::ParseFacing(L, __FUNCTION__, 5);
 
 	int teamID = CtrlTeam();
 	if (lua_israwnumber(L, 6)) {
@@ -808,17 +734,19 @@ int LuaSyncedCtrl::CreateUnit(lua_State* L)
 		return 0;
 	}
 
-
 	if (!FullCtrl() && (CtrlTeam() != teamID)) {
 		luaL_error(L, "CreateUnit(): bad team %d", teamID);
 		return 0;
 	}
 
+
+	const bool build = lua_toboolean(L, 7);
+
 	if (!uh->CanBuildUnit(unitDef, teamID)) {
 		return 0; // unit limit reached
 	}
 
-	// FIXME -- allow specifying the 'build' and 'builder' parameters?
+	// FIXME -- allow specifying the 'builder' parameter?
 
 	if (inCreateUnit) {
 		luaL_error(L, "CreateUnit(): recursion is not permitted");
@@ -827,8 +755,7 @@ int LuaSyncedCtrl::CreateUnit(lua_State* L)
 	inCreateUnit = true;
 	ASSERT_SYNCED_FLOAT3(pos);
 	ASSERT_SYNCED_PRIMITIVE((int)facing);
-	CUnit* unit = unitLoader.LoadUnit(unitDef, pos, teamID,
-	                                  false, facing, NULL);
+	CUnit* unit = unitLoader.LoadUnit(unitDef, pos, teamID, build, facing, NULL);
 	inCreateUnit = false;
 
 	if (unit) {
@@ -1021,7 +948,11 @@ int LuaSyncedCtrl::SetUnitTooltip(lua_State* L)
 	if (unit == NULL) {
 		return 0;
 	}
-	unit->tooltip = luaL_checkstring(L, 2);
+	const char *tmp = luaL_checkstring(L, 2);
+	if (tmp)
+		unit->tooltip = string(tmp, lua_strlen(L, 2));
+	else
+		unit->tooltip = "";
 	return 0;
 }
 
@@ -1052,7 +983,7 @@ int LuaSyncedCtrl::SetUnitHealth(lua_State* L)
 				}
 				else if (key == "paralyze") {
 					unit->paralyzeDamage = max(0.0f, value);
-					if (unit->paralyzeDamage >= unit->health) {
+					if (unit->paralyzeDamage > unit->maxHealth) {
 						unit->stunned = true;
 					} else if (value < 0.0f) {
 						unit->stunned = false;
@@ -2165,6 +2096,21 @@ int LuaSyncedCtrl::TransferFeature(lua_State* L)
 	return 0;
 }
 
+
+int LuaSyncedCtrl::SetFeatureAlwaysVisible(lua_State* L)
+{
+	CFeature* feature = ParseFeature(L, __FUNCTION__, 1);
+	if (feature == NULL) {
+		return 0;
+	}
+	if (!lua_isboolean(L, 2)) {
+		luaL_error(L, "Incorrect arguments to SetUnitAlwaysVisible()");
+	}
+	feature->alwaysVisible = lua_toboolean(L, 2);
+	return 0;
+}
+
+
 int LuaSyncedCtrl::SetFeatureHealth(lua_State* L)
 {
 	CFeature* feature = ParseFeature(L, __FUNCTION__, 1);
@@ -2196,7 +2142,15 @@ int LuaSyncedCtrl::SetFeaturePosition(lua_State* L)
 	const float3 pos(luaL_checkfloat(L, 2),
 	                 luaL_checkfloat(L, 3),
 	                 luaL_checkfloat(L, 4));
-	feature->ForcedMove(pos);
+
+	if (lua_isboolean(L, 5)) {
+		const bool snapToGround = lua_toboolean(L, 5);
+		feature->ForcedMove(pos, snapToGround);
+	} else {
+		// use default argument
+		feature->ForcedMove(pos);
+	}
+
 	return 0;
 }
 
@@ -2226,7 +2180,7 @@ int LuaSyncedCtrl::SetFeatureResurrect(lua_State* L)
 
 	const int args = lua_gettop(L); // number of arguments
 	if (args >= 3) {
-		feature->buildFacing = ParseFacing(L, __FUNCTION__, 3);
+		feature->buildFacing = LuaUtils::ParseFacing(L, __FUNCTION__, 3);
 	}
 	return 0;
 }
@@ -3007,42 +2961,6 @@ static int ParseStringVector(lua_State* L, int index, vector<string>& strvec)
 		lua_rawgeti(L, index, i);
 		if (lua_isstring(L, -1)) {
 			strvec.push_back(lua_tostring(L, -1));
-			lua_pop(L, 1);
-			i++;
-		} else {
-			lua_pop(L, 1);
-			return (i - 1);
-		}
-	}
-}
-
-
-static int ParseFloatVector(lua_State* L, int index, vector<float>& floatvec)
-{
-	floatvec.clear();
-	int i = 1;
-	while (true) {
-		lua_rawgeti(L, index, i);
-		if (lua_isnumber(L, -1)) {
-			floatvec.push_back(lua_tofloat(L, -1));
-			lua_pop(L, 1);
-			i++;
-		} else {
-			lua_pop(L, 1);
-			return (i - 1);
-		}
-	}
-}
-
-
-static int ParseIntVector(lua_State* L, int index, vector<float>& intvec)
-{
-	intvec.clear();
-	int i = 1;
-	while (true) {
-		lua_rawgeti(L, index, i);
-		if (lua_isnumber(L, -1)) {
-			intvec.push_back(lua_toint(L, -1));
 			lua_pop(L, 1);
 			i++;
 		} else {

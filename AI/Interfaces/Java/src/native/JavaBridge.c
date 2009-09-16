@@ -33,6 +33,7 @@
 
 #include <string.h>	// strlen(), strcat(), strcpy()
 #include <stdlib.h>	// malloc(), calloc(), free()
+#include <assert.h>	// assert()
 
 // These defines are taken from the OpenJDK jlong_md.h files
 // (one for solaris and one for windows)
@@ -565,8 +566,40 @@ static bool java_createJavaVMInitArgs(struct JavaVMInitArgs* vm_args) {
 	simpleLog_logL(SIMPLELOG_LEVEL_FINE, "JVM: JNI version: %#x", jniVersion);
 	vm_args->version = jniVersion;
 
+	// ### check if debug related JVM options should be used ###
+	// if false, the JVM creation will fail if an
+	// unknown or invalid option was specified
+	bool useDebugOptions = true;
+	const char* useDebugOptionsStr = "auto";
+	if (jvmPropFile != NULL) {
+		const char* useDebugOptionsFromCfg =
+				util_map_getValueByKey(
+				cfgProps_size, cfgProps_keys, cfgProps_values,
+				"jvm.useDebugOptions");
+		if (useDebugOptionsFromCfg != NULL) {
+			useDebugOptionsStr = useDebugOptionsFromCfg;
+		}
+	}
+	{
+		if (strcmp(useDebugOptionsStr, "auto") == 0
+				|| strcmp(useDebugOptionsStr, "Auto") == 0
+				|| strcmp(useDebugOptionsStr, "AUTO") == 0
+				|| strcmp(useDebugOptionsStr, "a") == 0
+				|| strcmp(useDebugOptionsStr, "A") == 0)
+		{
+			// auto
+#if       defined DEBUG
+			useDebugOptions = true;
+#else  // defined DEBUG
+			useDebugOptions = false;
+#endif // defined DEBUG
+		} else {
+			// true or false
+			useDebugOptions = util_strToBool(useDebugOptionsStr);
+		}
+	}
+
 	// ### check if unrecognized JVM options should be ignored ###
-	// set ignore unrecognized
 	// if false, the JVM creation will fail if an
 	// unknown or invalid option was specified
 	bool ignoreUnrecognized = true;
@@ -666,7 +699,8 @@ static bool java_createJavaVMInitArgs(struct JavaVMInitArgs* vm_args) {
 		// ### add string options from the JVM config file with property name "jvm.option.x" ###
 		int i;
 		for (i=0; i < cfgProps_size; ++i) {
-			if (strcmp(cfgProps_keys[i], "jvm.option.x") == 0) {
+			if ((strcmp(cfgProps_keys[i], "jvm.option.x") == 0) ||
+					(useDebugOptions && (strcmp(cfgProps_keys[i], "jvm.option.debug.x") == 0))) {
 				const char* const val = cfgProps_values[i];
 				const size_t val_size = strlen(val);
 				// ignore "-Djava.class.path=..."
@@ -893,6 +927,7 @@ bool java_unloadJNIEnv() {
 		} else {
 			g_jvm = NULL;
 		}
+		establishSpringEnv();
 	}
 
 	return true;
@@ -1228,17 +1263,13 @@ bool java_releaseStatic() {
 	return true;
 }
 
-static inline bool java_getSkirmishAIAndMethod(size_t teamId, jobject* o_ai,
+static inline void java_getSkirmishAIAndMethod(size_t teamId, jobject* o_ai,
 		size_t methodIndex, jmethodID* mth) {
 
-	bool success = false;
-
-	size_t implId = team_skirmishAiImpl[teamId];
+	const size_t implId = team_skirmishAiImpl[teamId];
 	*o_ai = skirmishAiImpl_instance[implId];
+	assert((*o_ai) != NULL);
 	*mth = skirmishAiImpl_methods[implId][methodIndex];
-	success = ((*mth) != NULL);
-
-	return success;
 }
 
 
@@ -1349,8 +1380,11 @@ bool java_initSkirmishAIClass(
 
 	// see if an AI for className is instantiated already
 	size_t sai;
+	size_t firstFree = skirmishAiImpl_size;
 	for (sai = 0; sai < skirmishAiImpl_size; ++sai) {
-		if (strcmp(skirmishAiImpl_className[sai], className) == 0) {
+		if (skirmishAiImpl_className[sai] == NULL) {
+			firstFree = sai;
+		} else if (strcmp(skirmishAiImpl_className[sai], className) == 0) {
 			break;
 		}
 	}
@@ -1358,6 +1392,7 @@ bool java_initSkirmishAIClass(
 
 	// instantiate AI (if needed)
 	if (skirmishAiImpl_className[sai] == NULL) {
+		sai = firstFree;
 		establishJavaEnv();
 		JNIEnv* env = java_getJNIEnv();
 
@@ -1371,16 +1406,25 @@ bool java_initSkirmishAIClass(
 			java_initPointerClass(env);
 		}
 
-		skirmishAiImpl_methods[sai] = (jmethodID*) calloc(MTHS_SIZE_SKIRMISH_AI,
-				sizeof(jmethodID));
+		jobject    instance    = NULL;
+		jmethodID* methods     = NULL;
+		jobject    classLoader = NULL;
+
+		methods = (jmethodID*) calloc(MTHS_SIZE_SKIRMISH_AI, sizeof(jmethodID));
 		success = java_loadSkirmishAI(env, shortName, version, className,
-				&(skirmishAiImpl_instance[sai]), skirmishAiImpl_methods[sai],
-				&(skirmishAiImpl_classLoader[sai]));
+				&(instance), methods, &(classLoader));
 		establishSpringEnv();
+
 		if (success) {
-			skirmishAiImpl_className[sai] = util_allocStrCpy(className);
-			skirmishAiImpl_size++;
+			skirmishAiImpl_instance[sai]    = instance;
+			skirmishAiImpl_methods[sai]     = methods;
+			skirmishAiImpl_classLoader[sai] = classLoader;
+			skirmishAiImpl_className[sai]   = util_allocStrCpy(className);
+			if (firstFree == skirmishAiImpl_size) {
+				skirmishAiImpl_size++;
+			}
 		} else {
+			free(methods);
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
 					"Class loading failed for class: %s", className);
 		}
@@ -1402,7 +1446,8 @@ bool java_releaseSkirmishAIClass(const char* className) {
 	// see if an AI for className is instantiated
 	size_t sai;
 	for (sai = 0; sai < skirmishAiImpl_size; ++sai) {
-		if (strcmp(skirmishAiImpl_className[sai], className) == 0) {
+		if ((skirmishAiImpl_className[sai] != NULL) &&
+				(strcmp(skirmishAiImpl_className[sai], className) == 0)) {
 			break;
 		}
 	}
@@ -1429,10 +1474,14 @@ bool java_releaseSkirmishAIClass(const char* className) {
 		establishSpringEnv();
 
 		if (success) {
-			FREE(skirmishAiImpl_classLoader[sai]);
-			FREE(skirmishAiImpl_instance[sai]);
+			skirmishAiImpl_classLoader[sai] = NULL;
+			skirmishAiImpl_instance[sai] = NULL;
 			FREE(skirmishAiImpl_methods[sai]);
 			FREE(skirmishAiImpl_className[sai]);
+			// if it is the last implementation
+			if (sai+1 == skirmishAiImpl_size) {
+				skirmishAiImpl_size--;
+			}
 		}
 	}
 
@@ -1468,11 +1517,13 @@ int java_skirmishAI_init(int teamId,
 	jmethodID mth = NULL;
 	jobject o_ai = NULL;
 
-	bool success = java_getSkirmishAIAndMethod(teamId, &o_ai,
-			MTH_INDEX_SKIRMISH_AI_INIT, &mth);
+	java_getSkirmishAIAndMethod(teamId, &o_ai, MTH_INDEX_SKIRMISH_AI_INIT, &mth);
+	bool success = true;
 
 	JNIEnv* env = NULL;
 	if (success) {
+		java_getSkirmishAIAndMethod(teamId, &o_ai, MTH_INDEX_SKIRMISH_AI_INIT,
+				&mth);
 		establishJavaEnv();
 		env = java_getJNIEnv();
 	}
@@ -1517,8 +1568,10 @@ int java_skirmishAI_release(int teamId) {
 
 	jmethodID mth = NULL;
 	jobject o_ai = NULL;
-	bool success = java_getSkirmishAIAndMethod(teamId, &o_ai,
-			MTH_INDEX_SKIRMISH_AI_RELEASE, &mth);
+
+	java_getSkirmishAIAndMethod(teamId, &o_ai, MTH_INDEX_SKIRMISH_AI_RELEASE,
+			&mth);
+	bool success = true;
 
 	if (success) {
 		establishJavaEnv();
@@ -1541,8 +1594,10 @@ int java_skirmishAI_handleEvent(int teamId, int topic, const void* data) {
 
 	jmethodID mth = NULL;
 	jobject o_ai = NULL;
-	bool success = java_getSkirmishAIAndMethod(teamId, &o_ai,
+
+	java_getSkirmishAIAndMethod(teamId, &o_ai,
 			MTH_INDEX_SKIRMISH_AI_HANDLE_EVENT, &mth);
+	bool success = true;
 
 	if (success) {
 		establishJavaEnv();

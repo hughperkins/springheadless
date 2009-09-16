@@ -198,19 +198,6 @@ def check_vorbis(env, conf):
 	guess_include_path(env, conf, 'vorbisfile', 'vorbis')
 
 
-
-def check_python(env, conf):
-	print "Checking for Python 2.6...",
-	print
-	guess_include_path(env, conf, 'Python', 'python2.6')
-	print "Checking for Python 2.5...",
-	print
-	guess_include_path(env, conf, 'Python', 'python2.5')
-	print "Checking for Python 2.4...",
-	print
-	guess_include_path(env, conf, 'Python', 'python2.4')
-
-
 def check_java(env, conf):
 	print "Checking for Java includes ...",
 	if env.has_key('javapath') and env['javapath']:
@@ -289,16 +276,17 @@ def CheckHeadersAndLibraries(env, conf):
 	boost_serial = Dependency([], ['boost/serialization/split_member.hpp'])
 	boost_po     = Dependency(['boost_program_options'], ['boost/program_options.hpp'])
 	boost_system  = Dependency(['boost_system'],   ['boost/system/error_code.hpp'])
+	boost_signals = Dependency(['boost_signals'], ['boost/signal.hpp'])
 
 	if env.Dictionary('CC').find('gcc') != -1: gcc = True
 	else: gcc = False
 
-	for boost in (boost_thread, boost_regex, boost_po, boost_system):
+	for boost in (boost_thread, boost_regex, boost_po, boost_system, boost_signals):
 		l = boost.libraries[0]
 		if gcc: boost.libraries = [l+'-gcc-mt', l+'-mt', l+'-gcc', l]
 		else:   boost.libraries = [l+'-mt', l]
 
-	d = [boost_common, boost_regex, boost_serial, boost_thread, boost_po, boost_system]
+	d = [boost_common, boost_regex, boost_serial, boost_thread, boost_po, boost_system, boost_signals]
 
 	d += [Dependency(['GL', 'opengl32'], ['GL/gl.h'])]
 	d += [Dependency(['GLU', 'glu32'], ['GL/glu.h'])]
@@ -321,15 +309,12 @@ def CheckHeadersAndLibraries(env, conf):
 	else:
 		d += [Dependency(['Xcursor'], ['X11/Xcursor/Xcursor.h'])]
 		d += [Dependency(['X11'], ['X11/X.h'])]
-		#d += [Dependency(['jvm'],     ['jni.h'])]
 
 	d += [Dependency(['vorbisfile'], ['vorbis/vorbisfile.h'])]
 	d += [Dependency(['vorbis'], [])]
 	d += [Dependency(['ogg'], ['ogg/ogg.h'])]
 
 	d += [Dependency(['SDL', 'SDL-1.1'], ['SDL/SDL.h', 'SDL11/SDL.h'])]
-	d += [Dependency(['python2.6', 'python26', 'python2.5', 'python25',
-		'python2.4', 'python24'], ['Python.h'])]
 	d += [Dependency([], ['jni.h'])]
 
 	if env['use_tcmalloc']:
@@ -362,7 +347,6 @@ def configure(env, conf_dir):
 	check_ogg(env, conf)
 	check_vorbis(env, conf)
 
-	check_python(env, conf)
 	check_java(env, conf)
 	check_java_bin(env, conf)
 	CheckHeadersAndLibraries(env, conf)

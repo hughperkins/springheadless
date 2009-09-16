@@ -7,10 +7,15 @@
 #ifndef FLOAT3_H
 #define FLOAT3_H
 
+#include <cassert>
+
+#include "BranchPrediction.h"
 #include "lib/streflop/streflop_cond.h"
 #include "creg/creg_cond.h"
 #include "ExternalAI/Interface/SAIFloat3.h"
 #include "FastMath.h"
+
+
 
 /**
  * @brief float3 class
@@ -27,6 +32,16 @@ public:
 	inline void* operator new(size_t n, void *p){return p;}; //cp visual
 	inline void operator delete(void* p,size_t size){mempool.Free(p,size);};
 */
+
+#ifdef _MSC_VER
+	static const float CMP_EPS;
+	static const float NORMALIZE_EPS;
+#else
+	static const float CMP_EPS = 1e-4f;
+	static const float NORMALIZE_EPS = 1e-12f;
+#endif
+
+
 	/**
 	 * @brief Constructor
 	 *
@@ -61,7 +76,7 @@ public:
 	 * a const context
 	 */
 	inline float3& operator= (const SAIFloat3& sAIFloat3) {
-		
+
 		x = sAIFloat3.x;
 		y = sAIFloat3.y;
 		z = sAIFloat3.z;
@@ -287,7 +302,9 @@ public:
 	 * checking each x/y/z component individually.
 	 */
 	inline bool operator== (const float3 &f) const {
-		return math::fabs(x-f.x) <= math::fabs(1.0E-4f*x) && math::fabs(y-f.y) <= math::fabs(1.0E-4f*y) && math::fabs(z-f.z) <= math::fabs(1.0E-4f*z);
+		return math::fabs(x-f.x) <= math::fabs(CMP_EPS*x)
+			&& math::fabs(y-f.y) <= math::fabs(CMP_EPS*y)
+			&& math::fabs(z-f.z) <= math::fabs(CMP_EPS*z);
 	}
 
 	/**
@@ -395,7 +412,8 @@ public:
 	 * square root for pythagorean theorem)
 	 */
 	inline float Length() const{
-		return (float) math::sqrt(x*x+y*y+z*z);
+		//assert(x!=0.f || y!=0.f || z!=0.f);
+		return (float) math::sqrt(SqLength());
 	}
 
 	/**
@@ -407,46 +425,98 @@ public:
 	 * square root for pythagorean theorem)
 	 */
 	inline float Length2D() const {
-		return (float) math::sqrt(x * x + z * z);
+		//assert(x!=0.f || y!=0.f || z!=0.f);
+		return (float) math::sqrt(SqLength2D());
 	}
 
 	/**
-	 * @brief normalizes the vector approximately
-	 * @return pointer to self
-	 *
-	 * Normalizes the vector by dividing each
-	 * x/y/z component by the vector's approx.
-	 * length.
-	 *
-	 * Measured compile time hit: statistically insignificant (1%)
-	 */
-	inline float3& ANormalize() {
-		float invL = fastmath::isqrt(SqLength());
-		if (invL != 0.f) {
-			x *= invL;
-			y *= invL;
-			z *= invL;
-		}
-		return *this;
-	}
-
-	/**
-	 * @brief normalizes the vector
+	 * @brief normalizes the vector using one of Normalize implementations
 	 * @return pointer to self
 	 *
 	 * Normalizes the vector by dividing each
 	 * x/y/z component by the vector's length.
 	 */
 	inline float3& Normalize() {
-		const float L = math::sqrt(x * x + y * y + z * z);
-		if (L != 0.f) {
-			const float invL = (float) 1.f / L;
-			x *= invL;
-			y *= invL;
-			z *= invL;
-		}
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+		assert(SqLength() > NORMALIZE_EPS);
+		return UnsafeNormalize();
+#else
+		return SafeNormalize();
+#endif
+	}
+
+	/**
+	 * @brief normalizes the vector without checking for zero vector
+	 * @return pointer to self
+	 *
+	 * Normalizes the vector by dividing each
+	 * x/y/z component by the vector's length.
+	 */
+	inline float3& UnsafeNormalize() {
+		*this *= math::isqrt(SqLength());
 		return *this;
 	}
+
+
+	/**
+	 * @brief normalizes the vector safely (check for *this == ZeroVector)
+	 * @return pointer to self
+	 *
+	 * Normalizes the vector by dividing each
+	 * x/y/z component by the vector's length.
+	 */
+	inline float3& SafeNormalize() {
+		const float sql = SqLength();
+		if (likely(sql > NORMALIZE_EPS))
+			*this *= math::isqrt(sql);
+		return *this;
+	}
+
+
+	/**
+	 * @brief normalizes the vector approximately
+	 * @return pointer to self
+	 *
+	 * Normalizes the vector by dividing each x/y/z component by
+	 * the vector's approx. length.
+	 */
+	inline float3& ANormalize() {
+#if defined(__SUPPORT_SNAN__) && !defined(USE_GML)
+		assert(SqLength() > NORMALIZE_EPS);
+		return UnsafeANormalize();
+#else
+		return SafeANormalize();
+#endif
+	}
+
+
+	/**
+	 * @brief normalizes the vector approximately without checking for ZeroVector
+	 * @return pointer to self
+	 *
+	 * Normalizes the vector by dividing each x/y/z component by
+	 * the vector's approx. length.
+	 */
+	inline float3& UnsafeANormalize() {
+		*this *= fastmath::isqrt(SqLength());
+		return *this;
+	}
+
+
+	/**
+	 * @brief normalizes the vector approximately and safely (check for *this == ZeroVector)
+	 * @return pointer to self
+	 *
+	 * Normalizes the vector by dividing each x/y/z component by
+	 * the vector's approx. length.
+	 */
+	inline float3& SafeANormalize() {
+		const float sql = SqLength();
+		if (likely(sql > NORMALIZE_EPS))
+			*this *= fastmath::isqrt(sql);
+		return *this;
+	}
+
 
 	/**
 	 * @brief length squared
@@ -519,7 +589,7 @@ public:
 
 	bool IsInBounds() const; //!< Check if this vector is in bounds without clamping x and z
 	bool CheckInBounds(); //!< Check if this vector is in bounds and clamp x and z if not
-	
+
 	SAIFloat3 toSAIFloat3() const;
 
 	float x; ///< x component

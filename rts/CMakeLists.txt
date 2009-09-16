@@ -72,7 +72,7 @@ ELSE (MINGW)
 	LIST(APPEND spring_libraries ${X11_X11_LIB} ${X11_Xcursor_LIB})
 ENDIF (MINGW)
 
-LIST(APPEND spring_libraries ${SDL_LIBRARY} ${Boost_REGEX_LIBRARY} ${Boost_THREAD_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY})
+LIST(APPEND spring_libraries ${SDL_LIBRARY} ${Boost_REGEX_LIBRARY} ${Boost_THREAD_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_SIGNALS_LIBRARY})
 
 ### build all libraries in lib (has its own CMakeLists.txt)
 ADD_SUBDIRECTORY(lib)
@@ -108,6 +108,8 @@ AUX_SOURCE_DIRECTORY(Rendering/GL renderfiles)
 AUX_SOURCE_DIRECTORY(Rendering/Textures renderfiles)
 AUX_SOURCE_DIRECTORY(Rendering/UnitModels renderfiles)
 
+AUX_SOURCE_DIRECTORY(aGui renderfiles)
+
 AUX_SOURCE_DIRECTORY(Sim simfiles)
 AUX_SOURCE_DIRECTORY(Sim/Features simfiles)
 AUX_SOURCE_DIRECTORY(Sim/Misc simfiles)
@@ -142,7 +144,7 @@ AUX_SOURCE_DIRECTORY(System/creg sysfiles)
 
 ### Add icon and manifest to exe using windres
 IF (MINGW)
-	FIND_PROGRAM(WINDRES NAMES windres i586-mingw32msvc-windres i686-mingw32-windres DOC "path to mingw's windres executable")
+	FIND_PROGRAM(WINDRES NAMES windres i586-mingw32msvc-windres i586-pc-mingw32-windres i686-mingw32-windres DOC "path to mingw's windres executable")
 	ADD_CUSTOM_COMMAND(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon.o COMMAND ${WINDRES} -I${CMAKE_CURRENT_SOURCE_DIR} -i${CMAKE_CURRENT_SOURCE_DIR}/icon.rc -o ${CMAKE_CURRENT_BINARY_DIR}/icon.o -v)
 	LIST(APPEND sysfiles icon.o)
 ENDIF (MINGW)

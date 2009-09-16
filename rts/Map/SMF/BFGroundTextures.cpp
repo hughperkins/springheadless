@@ -145,7 +145,7 @@ inline bool CBFGroundTextures::TexSquareInView(int btx, int bty) {
 	static const int heightDataX = gs->mapx + 1;
 	static const int bigTexW = (gs->mapx << 3) / numBigTexX;
 	static const int bigTexH = (gs->mapy << 3) / numBigTexY;
-	static const float bigTexSquareRadius = fastmath::sqrt(float(bigTexW * bigTexW + bigTexH * bigTexH));
+	static const float bigTexSquareRadius = fastmath::apxsqrt(float(bigTexW * bigTexW + bigTexH * bigTexH));
 
 	const int x = btx * bigTexW + (bigTexW >> 1);
 	const int y = bty * bigTexH + (bigTexH >> 1);
@@ -176,7 +176,7 @@ void CBFGroundTextures::DrawUpdate(void)
 
 			float dx = cam2->pos.x - x * bigSquareSize * SQUARE_SIZE - (SQUARE_SIZE << 6);
 			dx = max(0.0f, float(fabs(dx) - (SQUARE_SIZE << 6)));
-			float dist = fastmath::sqrt(dx * dx + dy * dy);
+			float dist = fastmath::apxsqrt(dx * dx + dy * dy);
 
 			float wantedLevel = dist / 1000;
 
@@ -251,7 +251,8 @@ void CBFGroundTextures::LoadSquare(int x, int y, int level)
 	if (usedPBO) {
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glCompressedTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, size, size, 0, size * size / 2, 0);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, 0, 0, GL_STREAM_DRAW); //discard old content
+		if (!gu->atiHacks)
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, 0, 0, GL_STREAM_DRAW); //discard old content
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	} else {
 		glCompressedTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, size, size, 0, size * size / 2, buf);

@@ -19,6 +19,7 @@
 #include "GameData.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/GlobalConstants.h"
+#include "ExternalAI/SkirmishAIHandler.h"
 #include "NetProtocol.h"
 #include "Net/RawPacket.h"
 #include "DemoRecorder.h"
@@ -39,8 +40,9 @@
 #include "Rendering/Textures/TAPalette.h"
 #include "StartScripts/ScriptHandler.h"
 #include "UI/InfoConsole.h"
+#include "aGui/Gui.h"
 #include "Exceptions.h"
-
+#include "TimeProfiler.h"
 
 CPreGame* pregame = NULL;
 using netcode::RawPacket;
@@ -52,12 +54,13 @@ CPreGame::CPreGame(const ClientSetup* setup) :
 		settings(setup),
 		savefile(NULL)
 {
+	ScopedOnceTimer timeProfile("CPreGame()");
 	net = new CNetProtocol();
 	activeController=this;
 
 	if(!settings->isHost)
 	{
-		net->InitClient(settings->hostip.c_str(), settings->hostport, settings->sourceport, settings->myPlayerName, SpringVersion::GetFull());
+		net->InitClient(settings->hostip.c_str(), settings->hostport, settings->sourceport, settings->myPlayerName, settings->myPasswd, SpringVersion::GetFull());
 		timer = SDL_GetTicks();
 	}
 	else
@@ -71,6 +74,7 @@ CPreGame::CPreGame(const ClientSetup* setup) :
 CPreGame::~CPreGame()
 {
 	// don't delete infoconsole, its beeing reused by CGame
+	agui::gui->Draw(); // delete leftover gui elements (remove once the gui is drawn ingame)
 }
 
 void CPreGame::LoadSetupscript(const std::string& script)
@@ -110,6 +114,7 @@ bool CPreGame::Draw()
 {
 	SDL_Delay(10); // milliseconds
 	ClearScreen();
+	agui::gui->Draw();
 
 	font->Begin();
 
@@ -206,6 +211,7 @@ void CPreGame::StartServer(const std::string& setupscript)
 	good_fpu_control_registers("before CGameServer creation");
 	startupData->SetSetup(setup->gameSetupText);
 	gameServer = new CGameServer(settings.get(), false, startupData, setup);
+	delete startupData;
 	gameServer->AddLocalClient(settings->myPlayerName, SpringVersion::GetFull());
 	good_fpu_control_registers("after CGameServer creation");
 }
@@ -333,6 +339,7 @@ void CPreGame::ReadDataFromDemo(const std::string& demoName)
 			good_fpu_control_registers("before CGameServer creation");
 			gameServer = new CGameServer(settings.get(), true, data, tempSetup);
 			gameServer->AddLocalClient(settings->myPlayerName, SpringVersion::GetFull());
+			delete data;
 			good_fpu_control_registers("after CGameServer creation");
 			logOutput.Print("GameServer started");
 			break;
@@ -390,6 +397,8 @@ void CPreGame::LoadMod(const std::string& modName)
 			}
 		}
 		alreadyLoaded = true;
+		// This loads the Lua AIs from the mod archives LuaAI.lua
+		skirmishAIHandler.LoadPreGame();
 	}
 }
 
@@ -398,14 +407,19 @@ void CPreGame::GameDataReceived(boost::shared_ptr<const netcode::RawPacket> pack
 	gameData.reset(new GameData(packet));
 
 	CGameSetup* temp = new CGameSetup();
-	if (temp->Init(gameData->GetSetup()))
-	{
+
+	if (temp->Init(gameData->GetSetup())) {
+		if (settings->isHost) {
+			const std::string& setupTextStr = gameData->GetSetup();
+			std::fstream setupTextFile("_script.txt", std::ios::out);
+
+			setupTextFile.write(setupTextStr.c_str(), setupTextStr.size());
+			setupTextFile.close();
+		}
 		gameSetup = const_cast<const CGameSetup*>(temp);
 		gs->LoadFromSetup(gameSetup);
 		CPlayer::UpdateControlledTeams();
-	}
-	else
-	{
+	} else {
 		throw content_error("Server sent us incorrect script");
 	}
 

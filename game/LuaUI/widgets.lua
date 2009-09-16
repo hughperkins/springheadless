@@ -77,7 +77,7 @@ widgetHandler = {
   customCommands = {},
   inCommandsChanged = false,
 
-  autoUserWidgets = false,
+  autoUserWidgets = true,
 
   actionHandler = include("actions.lua"),
   
@@ -166,6 +166,10 @@ local callInLists = {
   'KeyRelease',
   'MousePress',
   'MouseWheel',
+  'JoyAxis',
+  'JoyHat',
+  'JoyButtonDown',
+  'JoyButtonUp',
   'IsAbove',
   'GetTooltip',
   'GroupChanged',
@@ -313,7 +317,7 @@ end
 function widgetHandler:Initialize()
   self:LoadConfigData()
 
-  local autoUserWidgets = Spring.GetConfigInt('LuaAutoEnableUserWidgets', 0)
+  local autoUserWidgets = Spring.GetConfigInt('LuaAutoEnableUserWidgets', 1)
   self.autoUserWidgets = (autoUserWidgets ~= 0)
 
   -- create the "LuaUI/Config" directory
@@ -365,7 +369,8 @@ function widgetHandler:Initialize()
 
     local name = w.whInfo.name
     local basename = w.whInfo.basename
-    Spring.Echo(string.format("Loaded widget:  %-18s  <%s>", name, basename))
+    local source = self.knownWidgets[name].fromZip and "mod: " or "user:"
+    Spring.Echo(string.format("Loaded widget from %s  %-18s  <%s>", source, name, basename))
   end
 
   -- save the active widgets, and their ordering
@@ -1413,6 +1418,41 @@ function widgetHandler:MouseWheel(up, value)
   end
 end
 
+function widgetHandler:JoyAxis(axis, value)
+	for _,w in ipairs(self.JoyAxisList) do
+		if (w:JoyAxis(axis, value)) then
+		return true
+		end
+	end
+	return false
+end
+
+function widgetHandler:JoyHat(hat, value)
+	for _,w in ipairs(self.JoyHatList) do
+		if (w:JoyHat(hat, value)) then
+		return true
+		end
+	end
+	return false
+end
+
+function widgetHandler:JoyButtonDown(button, state)
+	for _,w in ipairs(self.JoyButtonDownList) do
+		if (w:JoyButtonDown(button, state)) then
+		return true
+		end
+	end
+	return false
+end
+
+function widgetHandler:JoyButtonUp(button, state)
+	for _,w in ipairs(self.JoyButtonUpList) do
+		if (w:JoyButtonUp(button, state)) then
+		return true
+		end
+	end
+	return false
+end
 
 function widgetHandler:IsAbove(x, y)
   if (self.tweakMode) then

@@ -51,11 +51,6 @@ public:
 	virtual const T_interfaceInfos& GetInterfaceInfos() const;
 	virtual const T_skirmishAIInfos& GetSkirmishAIInfos() const;
 
-	virtual const std::vector<std::string>& GetSkirmishAIOptionValueKeys(int teamId) const;
-	virtual const std::map<std::string, std::string>& GetSkirmishAIOptionValues(int teamId) const;
-
-	virtual const T_skirmishAIInfos& GetUsedSkirmishAIInfos();
-
 	virtual const T_dupInt& GetDuplicateInterfaceInfos() const;
 	virtual const T_dupSkirm& GetDuplicateSkirmishAIInfos() const;
 
@@ -88,14 +83,6 @@ private:
 	T_skirmishAIKeys skirmishAIKeys;
 	T_interfaceInfos interfaceInfos;
 	T_skirmishAIInfos skirmishAIInfos;
-
-	std::map<int, std::vector<std::string> > teamId_skirmishAIOptionValueKeys;
-	static const std::vector<std::string> EMPTY_OPTION_VALUE_KEYS;
-	std::map<int, std::map<std::string, std::string> > teamId_skirmishAIOptionValues;
-	static const std::map<std::string, std::string> EMPTY_OPTION_VALUES;
-
-	T_skirmishAIInfos usedSkirmishAIInfos;
-	bool usedSkirmishAIInfos_initialized;
 
 	T_dupInt duplicateInterfaceInfos;
 	T_dupSkirm duplicateSkirmishAIInfos;
@@ -149,33 +136,12 @@ private:
 	 * available: 0.1, 0.3, 0.5
 	 * chosen: 0.3
 	 *
-	 * @see #versionCompare()
+	 * @see IAILibraryManager::VersionCompare()
 	 */
 	static AIInterfaceKey FindFittingInterfaceSpecifier(
 			const std::string& shortName,
 			const std::string& minVersion,
 			const T_interfaceSpecs& specs);
-	/**
-	 * Compares two version strings.
-	 * Splits the version sptirngs at the '.' signs, and compares the parts.
-	 * If the number of parts do not match, then the string with less parts
-	 * is filled up with '.0' parts at its right, eg:
-	 * version 1: 0.1.2   -> 0.1.2.0
-	 * version 2: 0.1.2.3 -> 0.1.2.3
-	 * The left most part has the highest significance.
-	 * Comparison of the individual parts is done with std::string::compare(),
-	 * which implies for example that letters > numbers.
-	 * examples:
-	 * ("2", "1") -> 1
-	 * ("1", "1") -> 0
-	 * ("1", "2") -> -1
-	 * ("0.1.1", "0.1") -> 1
-	 * ("1.a", "1.9") -> 1
-	 * ("1.a", "1.A") -> 1
-	 */
-	static int versionCompare(
-			const std::string& version1,
-			const std::string& version2);
 };
 
 #endif // _AILIBRARYMANAGER_H

@@ -696,6 +696,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\ExternalAI\LuaAIImplHandler.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\ExternalAI\LuaAIImplHandler.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\ExternalAI\SAIInterfaceCallbackImpl.cpp"
 				>
 			</File>
@@ -712,7 +720,19 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\ExternalAI\SkirmishAIData.cpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\ExternalAI\SkirmishAIData.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\ExternalAI\SkirmishAIHandler.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\ExternalAI\SkirmishAIHandler.h"
 				>
 			</File>
 			<File
@@ -945,6 +965,14 @@
 			</File>
 			<File
 				RelativePath="..\..\Game\SelectedUnitsAI.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\Game\SelectionWidget.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\Game\SelectionWidget.h"
 				>
 			</File>
 			<File
@@ -1432,62 +1460,6 @@
 				</File>
 				<File
 					RelativePath="..\..\Game\Camera\FreeController.h"
-					>
-				</File>
-				<File
-					RelativePath="..\..\Game\Camera\LuaCameraCtrl.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="No debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release with error catching|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Syncdebug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release+MT with error catching|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug+MT|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							UsePrecompiledHeader="0"
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="..\..\Game\Camera\LuaCameraCtrl.h"
 					>
 				</File>
 				<File
@@ -2211,14 +2183,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\Rendering\Gl\glList.cpp"
-					>
-				</File>
-				<File
-					RelativePath="..\..\Rendering\Gl\glList.h"
-					>
-				</File>
-				<File
 					RelativePath="..\..\Rendering\Gl\IFramebuffer.h"
 					>
 				</File>
@@ -2379,6 +2343,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\Sim\Units\UnitDef.cpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\Sim\Units\UnitDef.h"
 					>
 				</File>
@@ -2450,11 +2418,27 @@
 						>
 					</File>
 					<File
+						RelativePath="..\..\Sim\Units\COB\CobScriptNames.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\Sim\Units\COB\CobScriptNames.h"
+						>
+					</File>
+					<File
 						RelativePath="..\..\Sim\Units\Cob\CobThread.cpp"
 						>
 					</File>
 					<File
 						RelativePath="..\..\Sim\Units\Cob\CobThread.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\Sim\Units\COB\LuaScriptNames.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\Sim\Units\COB\LuaScriptNames.h"
 						>
 					</File>
 					<File
@@ -2495,14 +2479,6 @@
 					</File>
 					<File
 						RelativePath="..\..\Sim\Units\COB\UnitScriptFactory.h"
-						>
-					</File>
-					<File
-						RelativePath="..\..\Sim\Units\COB\UnitScriptNames.cpp"
-						>
-					</File>
-					<File
-						RelativePath="..\..\Sim\Units\COB\UnitScriptNames.h"
 						>
 					</File>
 				</Filter>
@@ -2963,6 +2939,14 @@
 				Name="Weapons"
 				>
 				<File
+					RelativePath="..\..\Sim\Weapons\WeaponDef.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\Sim\Weapons\WeaponDef.h"
+					>
+				</File>
+				<File
 					RelativePath="..\..\Sim\Weapons\WeaponDefHandler.cpp"
 					>
 				</File>
@@ -3355,6 +3339,14 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\Sim\Misc\CommonDefHandler.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\Sim\Misc\CommonDefHandler.h"
+					>
+				</File>
+				<File
 					RelativePath="..\..\Sim\Misc\DamageArray.cpp"
 					>
 				</File>
@@ -3568,6 +3560,10 @@
 				</File>
 				<File
 					RelativePath="..\..\Sim\Features\Feature.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\Sim\Features\FeatureDef.cpp"
 					>
 				</File>
 				<File
@@ -3901,6 +3897,22 @@
 			</File>
 			<File
 				RelativePath="..\..\System\Info.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\System\InputHandler.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\System\InputHandler.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\System\Joystick.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\System\Joystick.h"
 				>
 			</File>
 			<File
@@ -4935,578 +4947,6 @@
 							>
 						</File>
 					</Filter>
-					<Filter
-						Name="7zip"
-						>
-						<File
-							RelativePath="..\..\lib\7zip\7zAlloc.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zAlloc.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zBuffer.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zBuffer.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zCrc.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zCrc.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zDecode.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									PreprocessorDefinitions="_SZ_ONE_DIRECTORY"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									PreprocessorDefinitions="_SZ_ONE_DIRECTORY"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									PreprocessorDefinitions="_SZ_ONE_DIRECTORY"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									PreprocessorDefinitions="_SZ_ONE_DIRECTORY"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zDecode.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zExtract.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zExtract.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zHeader.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zHeader.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zIn.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zIn.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zItem.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zItem.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zMethodID.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zMethodID.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\7zTypes.h"
-							>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\LzmaDecode.c"
-							>
-							<FileConfiguration
-								Name="Debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="No debug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Syncdebug|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Release+MT with error catching|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-							<FileConfiguration
-								Name="Debug+MT|Win32"
-								>
-								<Tool
-									Name="VCCLCompilerTool"
-									UsePrecompiledHeader="0"
-								/>
-							</FileConfiguration>
-						</File>
-						<File
-							RelativePath="..\..\lib\7zip\LzmaDecode.h"
-							>
-						</File>
-					</Filter>
 				</Filter>
 			</Filter>
 			<Filter
@@ -5699,6 +5139,14 @@
 					</File>
 					<File
 						RelativePath="..\..\System\Platform\Win\WinVersion.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\System\Platform\Win\wsdl.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\System\Platform\Win\wsdl.h"
 						>
 					</File>
 				</Filter>
@@ -7118,6 +6566,14 @@
 			</File>
 			<File
 				RelativePath="..\..\Lua\LuaConstCMDTYPE.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\Lua\LuaConstCOB.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\Lua\LuaConstCOB.h"
 				>
 			</File>
 			<File
@@ -13278,6 +12734,222 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="7z"
+				>
+				<File
+					RelativePath="..\..\lib\7z\7zBuf.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zBuf.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zBuf2.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zCrc.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zCrc.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zFile.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zFile.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\7zStream.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Bcj2.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Bcj2.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Bra.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Bra.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Bra86.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\CpuArch.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\LzmaDec.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\LzmaDec.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\lib\7z\Types.h"
+					>
+				</File>
+				<Filter
+					Name="Archive"
+					>
+					<Filter
+						Name="7z"
+						>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zAlloc.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zAlloc.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zDecode.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zDecode.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zExtract.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zExtract.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zHeader.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zHeader.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zIn.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zIn.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zItem.c"
+							>
+						</File>
+						<File
+							RelativePath="..\..\lib\7z\Archive\7z\7zItem.h"
+							>
+						</File>
+					</Filter>
+				</Filter>
+			</Filter>
+		</Filter>
+		<Filter
+			Name="aGUI"
+			>
+			<File
+				RelativePath="..\..\aGui\Button.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Button.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Gui.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Gui.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\GuiElement.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\GuiElement.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\HorizontalLayout.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\HorizontalLayout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Layout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\LineEdit.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\LineEdit.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\List.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\List.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Picture.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Picture.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\TextElement.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\TextElement.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\VerticalLayout.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\VerticalLayout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Window.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\aGui\Window.h"
+				>
+			</File>
 		</Filter>
 		<File
 			RelativePath=".\resource.h"

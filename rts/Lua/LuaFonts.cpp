@@ -252,11 +252,12 @@ int LuaFonts::Print(lua_State* L)
 				case 'c': { options |= FONT_CENTER;        break; }
 				case 'r': { options |= FONT_RIGHT;         break; }
 
-				//case 'd': { options |= FONT_BASELINE;      break; }
+				case 'a': { options |= FONT_ASCENDER;      break; }
 				case 't': { options |= FONT_TOP;           break; }
 				case 'v': { options |= FONT_VCENTER;       break; }
+				case 'x': { options |= FONT_BASELINE;      break; }
 				case 'b': { options |= FONT_BOTTOM;        break; }
-				case 'a': { options |= FONT_ASCENDER;      break; }
+				case 'd': { options |= FONT_DESCENDER;     break; }
 
 				case 's': { options |= FONT_SHADOW;        break; }
 				case 'o':
@@ -348,11 +349,13 @@ int LuaFonts::GetTextHeight(lua_State* L)
 
 	const string text(lua_tostring(L, 2),lua_strlen(L, 2));
 	float descender;
+	int lines;
 
-	const float height = font->GetTextHeight(text,&descender);
+	const float height = font->GetTextHeight(text,&descender,&lines);
 	lua_pushnumber(L, height);
 	lua_pushnumber(L, descender);
-	return 2;
+	lua_pushnumber(L, lines);
+	return 3;
 }
 
 
@@ -379,12 +382,12 @@ int LuaFonts::SetTextColor(lua_State* L)
 		if (count == 3) {
 			color->w = 1.0f;
 		}
-	} else if (args > 4) {
+	} else if (args >= 4) {
 		color = new float4;
-		*color[0] = lua_tonumber(L, 2);
-		*color[1] = lua_tonumber(L, 3);
-		*color[2] = lua_tonumber(L, 4);
-		*color[3] = luaL_optfloat(L, 5, 1.0f);
+		color->x = lua_tonumber(L, 2);
+		color->y = lua_tonumber(L, 3);
+		color->z = lua_tonumber(L, 4);
+		color->w = luaL_optfloat(L, 5, 1.0f);
 	} else if (!lua_isnil(L, 2)) {
 		luaL_error(L, "Incorrect arguments to font:SetTextColor([\"textColor\"])");
 	}
@@ -415,12 +418,12 @@ int LuaFonts::SetOutlineColor(lua_State* L)
 		if (count == 3) {
 			color->w = 1.0f;
 		}
-	} else if (args > 4) {
+	} else if (args >= 4) {
 		color = new float4;
-		*color[0] = lua_tonumber(L, 2);
-		*color[1] = lua_tonumber(L, 3);
-		*color[2] = lua_tonumber(L, 4);
-		*color[3] = luaL_optfloat(L, 5, 1.0f);
+		color->x = lua_tonumber(L, 2);
+		color->y = lua_tonumber(L, 3);
+		color->z = lua_tonumber(L, 4);
+		color->w = luaL_optfloat(L, 5, 1.0f);
 	} else if (!lua_isnil(L, 2)) {
 		luaL_error(L, "Incorrect arguments to font:SetOutlineColor([\"outlineColor\"])");
 	}

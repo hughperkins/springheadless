@@ -28,40 +28,12 @@
 #include "Sim/Misc/CollisionVolume.h"
 #include "Sim/Misc/DamageArrayHandler.h"
 #include "Sim/Projectiles/ExplosionGenerator.h"
-#include "Sim/Units/COB/UnitScriptNames.h"
 #include "Sim/Weapons/WeaponDefHandler.h"
 #include "LogOutput.h"
 #include "Sound/Sound.h"
 #include "Exceptions.h"
 
 CUnitDefHandler* unitDefHandler;
-
-
-UnitDef::UnitDefWeapon::UnitDefWeapon()
-: name("NOWEAPON")
-, def(NULL)
-, slavedTo(0)
-, mainDir(0, 0, 1)
-, maxAngleDif(-1)
-, fuelUsage(0)
-, badTargetCat(0)
-, onlyTargetCat(0)
-{
-}
-
-
-UnitDef::UnitDefWeapon::UnitDefWeapon(
-	std::string name, const WeaponDef* def, int slavedTo, float3 mainDir, float maxAngleDif,
-	unsigned int badTargetCat, unsigned int onlyTargetCat, float fuelUse):
-	name(name),
-	def(def),
-	slavedTo(slavedTo),
-	mainDir(mainDir),
-	maxAngleDif(maxAngleDif),
-	fuelUsage(fuelUse),
-	badTargetCat(badTargetCat),
-	onlyTargetCat(onlyTargetCat)
-{}
 
 
 CUnitDefHandler::CUnitDefHandler(void) : noCost(false)
@@ -98,7 +70,7 @@ CUnitDefHandler::CUnitDefHandler(void) : noCost(false)
 		/*
 		// Restrictions may tell us not to use this unit at all
 		// FIXME: causes mod errors when a unit is restricted to
-		// 0, since GetUnitByName() will return NULL if its UnitDef
+		// 0, since GetUnitDefByName() will return NULL if its UnitDef
 		// has not been loaded -- Kloot
 		const std::map<std::string, int>& resUnits = gameSetup->restrictedUnits;
 
@@ -117,7 +89,7 @@ CUnitDefHandler::CUnitDefHandler(void) : noCost(false)
 		unitDefs[id].decoyDef   = NULL;
 		unitDefs[id].techLevel  = -1;
 		unitDefs[id].collisionVolume = NULL;
-		unitID[unitName] = id;
+		unitDefIDsByName[unitName] = id;
 		for (int ym = 0; ym < 4; ym++) {
 			unitDefs[id].yardmaps[ym] = 0;
 		}
@@ -176,7 +148,7 @@ void CUnitDefHandler::CleanBuildOptions()
 		while (it != bo.end()) {
 			bool erase = false;
 
-			const UnitDef* bd = GetUnitByName(it->second);
+			const UnitDef* bd = GetUnitDefByName(it->second);
 			if (bd == NULL) {
 				logOutput.Print("WARNING: removed the \"" + it->second +
 				                "\" entry from the \"" + ud.name + "\" build menu");
@@ -207,9 +179,9 @@ void CUnitDefHandler::ProcessDecoys()
 	map<string, string>::const_iterator mit;
 	for (mit = decoyNameMap.begin(); mit != decoyNameMap.end(); ++mit) {
 		map<string, int>::iterator fakeIt, realIt;
-		fakeIt = unitID.find(mit->first);
-		realIt = unitID.find(mit->second);
-		if ((fakeIt != unitID.end()) && (realIt != unitID.end())) {
+		fakeIt = unitDefIDsByName.find(mit->first);
+		realIt = unitDefIDsByName.find(mit->second);
+		if ((fakeIt != unitDefIDsByName.end()) && (realIt != unitDefIDsByName.end())) {
 			UnitDef* fake = &unitDefs[fakeIt->second];
 			UnitDef* real = &unitDefs[realIt->second];
 			fake->decoyDef = real;
@@ -225,8 +197,8 @@ void CUnitDefHandler::FindStartUnits()
 	for (unsigned int i = 0; i < sideParser.GetCount(); i++) {
 		const std::string& startUnit = sideParser.GetStartUnit(i);
 		if (!startUnit.empty()) {
-			std::map<std::string, int>::iterator it = unitID.find(startUnit);
-			if (it != unitID.end()) {
+			std::map<std::string, int>::iterator it = unitDefIDsByName.find(startUnit);
+			if (it != unitDefIDsByName.end()) {
 				startUnitIDs.insert(it->second);
 			}
 		}
@@ -526,7 +498,7 @@ void CUnitDefHandler::ParseUnitDefTable(const LuaTable& udTable, const string& u
 	const WeaponDef* noWeaponDef = weaponDefHandler->GetWeapon("NOWEAPON");
 
 	LuaTable weaponsTable = udTable.SubTable("weapons");
-	for (int w = 0; w < COB_MaxWeapons; w++) {
+	for (int w = 0; w < MAX_WEAPONS_PER_UNIT; w++) {
 		LuaTable wTable;
 		string name = weaponsTable.GetString(w + 1, "");
 		if (name.empty()) {
@@ -570,7 +542,7 @@ void CUnitDefHandler::ParseUnitDefTable(const LuaTable& udTable, const string& u
 		const unsigned int slaveTo = wTable.GetInt("slaveTo", 0);
 
 		float3 mainDir = wTable.GetFloat3("mainDir", float3(1.0f, 0.0f, 0.0f));
-		mainDir.Normalize();
+		mainDir.SafeNormalize();
 
 		const float angleDif = cos(wTable.GetFloat("maxAngleDif", 360.0f) * (PI / 360.0f));
 
@@ -649,9 +621,7 @@ void CUnitDefHandler::ParseUnitDefTable(const LuaTable& udTable, const string& u
 
 		if (!ud.movedata) {
 			const string errmsg = "WARNING: Couldn't find a MoveClass named " + moveclass + " (used in UnitDef: " + unitName + ")";
-			logOutput.Print(errmsg);
-			// remove the UnitDef
-			throw content_error(errmsg);
+			throw content_error(errmsg); //! invalidate unitDef (this gets catched in ParseUnitDef!)
 		}
 
 		if ((ud.movedata->moveType == MoveData::Hover_Move) ||
@@ -718,13 +688,16 @@ void CUnitDefHandler::ParseUnitDefTable(const LuaTable& udTable, const string& u
 	ud.zsize = udTable.GetInt("footprintZ", 1) * 2;
 
 	ud.needGeo = false;
-	if ((ud.type == "Building") || (ud.type == "Factory")) {
-		CreateYardMap(&ud, udTable.GetString("yardMap", "c"));
+
+
+	if (ud.speed <= 0.0f) {
+		CreateYardMap(&ud, udTable.GetString("yardMap", ""));
 	} else {
 		for (int u = 0; u < 4; u++) {
 			ud.yardmaps[u] = 0;
 		}
 	}
+
 
 	ud.leaveTracks   = udTable.GetBool("leaveTracks", false);
 	ud.trackWidth    = udTable.GetFloat("trackWidth",   32.0f);
@@ -865,31 +838,17 @@ void CUnitDefHandler::LoadSounds(const LuaTable& soundsTable,
 }
 
 
-void CUnitDefHandler::LoadSound(GuiSoundSet& gsound,
-                                const string& fileName, const float volume)
+void CUnitDefHandler::LoadSound(GuiSoundSet& gsound, const string& fileName, const float volume)
 {
-	CFileHandler raw(fileName);
-	if (!sound->HasSoundItem(fileName) && !raw.FileExists())
+	const int id = LoadSoundFile(fileName);
+	if (id > 0)
 	{
-		string soundFile = "sounds/" + fileName;
-
-		if (soundFile.find(".wav") == string::npos && soundFile.find(".ogg") == string::npos) {
-			// .wav extension missing, add it
-			soundFile += ".wav";
-		}
-		CFileHandler fh(soundFile);
-		if (fh.FileExists()) {
-			// we have a valid soundfile: store name, ID, and default volume
-			const int id = sound->GetSoundId(soundFile);
-			GuiSoundSet::Data soundData(fileName, id, volume);
-			gsound.sounds.push_back(soundData);
-		}
+		GuiSoundSet::Data soundData(fileName, id, volume);
+		gsound.sounds.push_back(soundData);
 	}
 	else
 	{
-		const int id = sound->GetSoundId(fileName);
-		GuiSoundSet::Data soundData(fileName, id, volume);
-		gsound.sounds.push_back(soundData);
+		LogObject() << "Could not load sound from unit def: " << fileName;
 	}
 }
 
@@ -899,29 +858,25 @@ void CUnitDefHandler::ParseUnitDef(const LuaTable& udTable, const string& unitNa
 	try {
 		ParseUnitDefTable(udTable, unitName, id);
 	} catch (content_error const& e) {
-		logOutput.Print(e.what());
+		logOutput.Print("%s", e.what());
 		return;
 	}
 
 	unitDefs[id].valid = true;
 
-	if (noCost) {
-		unitDefs[id].metalCost    = 1;
-		unitDefs[id].energyCost   = 1;
-		unitDefs[id].buildTime    = 10;
-		unitDefs[id].metalUpkeep  = 0;
-		unitDefs[id].energyUpkeep = 0;
-	}
+	// force-initialize the real* members
+	unitDefs[id].SetNoCost(true);
+	unitDefs[id].SetNoCost(noCost);
 }
 
 
 
-const UnitDef* CUnitDefHandler::GetUnitByName(std::string name)
+const UnitDef* CUnitDefHandler::GetUnitDefByName(std::string name)
 {
 	StringToLowerInPlace(name);
 
-	std::map<std::string, int>::iterator it = unitID.find(name);
-	if (it == unitID.end()) {
+	std::map<std::string, int>::iterator it = unitDefIDsByName.find(name);
+	if (it == unitDefIDsByName.end()) {
 		return NULL;
 	}
 
@@ -934,7 +889,7 @@ const UnitDef* CUnitDefHandler::GetUnitByName(std::string name)
 }
 
 
-const UnitDef* CUnitDefHandler::GetUnitByID(int id)
+const UnitDef* CUnitDefHandler::GetUnitDefByID(int id)
 {
 	if ((id <= 0) || (id > numUnitDefs)) {
 		return NULL;
@@ -951,16 +906,16 @@ const UnitDef* CUnitDefHandler::GetUnitByID(int id)
 void CUnitDefHandler::CreateYardMap(UnitDef* def, std::string yardmapStr)
 {
 	StringToLowerInPlace(yardmapStr);
- 
+
 	const int mw = def->xsize;
 	const int mh = def->zsize;
 	const int maxIdx = mw * mh;
- 
+
 	// create the yardmaps for each build-facing
 	for (int u = 0; u < 4; u++) {
 		def->yardmaps[u] = new unsigned char[maxIdx];
 	}
- 
+
 	// Spring resolution's is double that of TA's (so 4 times as much area)
 	unsigned char* originalMap = new unsigned char[maxIdx / 4];
 
@@ -1090,6 +1045,16 @@ void CUnitDefHandler::AssignTechLevels()
 	}
 }
 
+bool CUnitDefHandler::ToggleNoCost()
+{
+	noCost = !noCost;
+
+	for (int i = 0; i < numUnitDefs; ++i) {
+		unitDefs[i].SetNoCost(noCost);
+	}
+
+	return noCost;
+}
 
 void CUnitDefHandler::AssignTechLevel(UnitDef& ud, int level)
 {
@@ -1103,31 +1068,9 @@ void CUnitDefHandler::AssignTechLevel(UnitDef& ud, int level)
 
 	map<int, std::string>::const_iterator bo_it;
 	for (bo_it = ud.buildOptions.begin(); bo_it != ud.buildOptions.end(); ++bo_it) {
-		std::map<std::string, int>::const_iterator ud_it = unitID.find(bo_it->second);
-		if (ud_it != unitID.end()) {
+		std::map<std::string, int>::const_iterator ud_it = unitDefIDsByName.find(bo_it->second);
+		if (ud_it != unitDefIDsByName.end()) {
 			AssignTechLevel(unitDefs[ud_it->second], level);
 		}
 	}
-}
-
-
-
-
-
-
-UnitDef::~UnitDef() {
-	for (std::vector<CExplosionGenerator*>::iterator it = sfxExplGens.begin(); it != sfxExplGens.end(); ++it) {
-		delete *it;
-	}
-}
-
-S3DModel* UnitDef::LoadModel() const {
-	// not exactly kosher, but...
-	UnitDef* udef = const_cast<UnitDef*>(this);
-
-	if (udef->modelDef.model == NULL) {
-		udef->modelDef.model = modelParser->Load3DModel(udef->modelDef.modelpath, udef->modelCenterOffset);
-	}
-
-	return (udef->modelDef.model);
 }

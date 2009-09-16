@@ -9,6 +9,7 @@
 #include "Game/GameHelper.h"
 #include "Game/GameSetup.h"
 #include "Game/SelectedUnits.h"
+#include "Game/CameraHandler.h"
 #include "Lua/LuaMaterial.h"
 #include "Lua/LuaUnitMaterial.h"
 #include "Lua/LuaRules.h"
@@ -274,6 +275,18 @@ void CUnitDrawer::Update(void)
 			(*usi)->UpdateDrawPos();
 		}
 	}
+
+	distToGroundForIcons_useMethod = camHandler->GetCurrentController().GetUseDistToGroundForIcons();
+	if (distToGroundForIcons_useMethod) {
+		const float3& camPos    = camHandler->GetCurrentController().GetPos();
+		// use the height at the current camera position
+		//const float groundHeight = ground->GetHeight(camPos.x, camPos.z);
+		// use the middle between the highest and lowest position on the map as average
+		const float groundHeight = (readmap->currMinHeight + readmap->currMaxHeight) / 2;
+		const float overGround = camPos.y - groundHeight;
+		//distToGroundForIcons_areIcons = (overGround > unitIconDist * 30);
+		distToGroundForIcons_areIcons = (overGround*overGround > iconLength);
+	}
 }
 
 
@@ -375,10 +388,8 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 			else
 				unit->lastDrawFrame = gs->frameNum;
 #endif
-			float sqDist = (unit->pos-camera->pos).SqLength();
-			float iconDistMult = unit->unitDef->iconType->GetDistance();
-			float realIconLength = iconLength * (iconDistMult * iconDistMult);
-			if (sqDist>realIconLength) {
+			const float sqDist = (unit->pos-camera->pos).SqLength();
+			if (DrawAsIcon(*unit, sqDist)) {
 				drawIcon.push_back(unit);
 				unit->isIcon = true;
 			}
@@ -404,11 +415,9 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 			if ((!gameSetup || gameSetup->ghostedBuildings) && !(unit->mobility)) {
 				// it's a building we've had LOS on once,
 				// add it to the vector of cloaked units
-				float sqDist = (unit->pos-camera->pos).SqLength();
-				float iconDistMult = unit->unitDef->iconType->GetDistance();
-				float realIconLength = iconLength * (iconDistMult * iconDistMult);
+				const float sqDist = (unit->pos-camera->pos).SqLength();
 
-				if (sqDist < realIconLength) {
+				if (!DrawAsIcon(*unit, sqDist)) {
 					S3DModel* model = unit->model;
 					if (unit->unitDef->decoyDef) {
 						model = unit->unitDef->decoyDef->LoadModel();
@@ -443,8 +452,10 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 	drawStat.clear();
 
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
-	glEnable(GL_FOG);
+	if(gu->drawFog) {
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+		glEnable(GL_FOG);
+	}
 
 	drawIcon.clear();
 	drawRadarIcon.clear();
@@ -496,7 +507,7 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 
 				const UnitDef* udef = ti->second.unitdef;
 				S3DModel* model = udef->LoadModel();
-				
+
 				model->DrawStatic();
 				glPopMatrix();
 			}
@@ -517,8 +528,11 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 	glEnable(GL_ALPHA_TEST);
 	glBindTexture(GL_TEXTURE_2D, fartextureHandler->GetTextureID());
 	glColor3f(1, 1, 1);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
-	glEnable(GL_FOG);
+
+	if(gu->drawFog) {
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+		glEnable(GL_FOG);
+	}
 
 	va = GetVertexArray();
 	va->Initialize();
@@ -704,14 +718,11 @@ inline void CUnitDrawer::DoDrawUnitShadow(CUnit *unit) {
 		camera->InView(unit->drawMidPos, unit->radius + 700)) {
 
 		// FIXME: test against the shadow projection intersection
-		float sqDist = (unit->pos-camera->pos).SqLength();
-		float farLength = unit->sqRadius * unitDrawDistSqr;
+		const float sqDist = (unit->pos-camera->pos).SqLength();
+		const float farLength = unit->sqRadius * unitDrawDistSqr;
 
 		if (sqDist < farLength) {
-			float iconDistMult = unit->unitDef->iconType->GetDistance();
-			float realIconLength = iconLength * (iconDistMult * iconDistMult);
-
-			if (sqDist < realIconLength) {
+			if (!DrawAsIcon(*unit, sqDist)) {
 				if (!unit->isCloaked) {
 					if (unit->lodCount <= 0) {
 						DrawUnitNow(unit);
@@ -855,17 +866,21 @@ void CUnitDrawer::DrawIcon(CUnit * unit, bool asRadarBlip)
 
 void CUnitDrawer::SetupForGhostDrawing() const
 {
+	glEnable(GL_LIGHTING); // Give faded objects same appearance as regular
+	glLightfv(GL_LIGHT1, GL_POSITION, mapInfo->light.sunDir);
+	glEnable(GL_LIGHT1);
+
 	SetupBasicS3OTexture0();
-	SetupBasicS3OTexture1();
-	// use the alpha given by glColor for the outgoing alpha.
-	// (might need to change this if we ever have transparent bits on units?)
-	glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA_ARB, GL_REPLACE);
-	glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_PRIMARY_COLOR_ARB);
+	SetupBasicS3OTexture1(); // This also sets up the transparency
+
+	float cols[]={1,1,1,1};
+	glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,cols);
+	glColor3f(1,1,1);
 
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 	glEnable(GL_TEXTURE_2D);
 
-	glPushAttrib(GL_COLOR_BUFFER_BIT || GL_DEPTH_BUFFER_BIT);	
+	glPushAttrib(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_ALPHA_TEST);
@@ -883,12 +898,11 @@ void CUnitDrawer::CleanUpGhostDrawing() const
 	// reset texture1 state
 	CleanupBasicS3OTexture1();
 
-	// also reset the alpha generation
-	glTexEnvi(GL_TEXTURE_ENV,GL_COMBINE_ALPHA_ARB, GL_MODULATE);
-	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_ALPHA_ARB, GL_TEXTURE);
-
 	// reset texture0 state
 	CleanupBasicS3OTexture0();
+
+	glDisable(GL_LIGHTING);
+	glDisable(GL_LIGHT1);
 }
 
 
@@ -1201,19 +1215,21 @@ void CUnitDrawer::SetTeamColour(int team, float alpha) const
 		unsigned char* col = teamHandler->Team(team)->color;
 		glProgramEnvParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 14, col[0] / 255.f, col[1] / 255.f, col[2] / 255.f, alpha);
 		if (luaDrawing) { // FIXME?
-			SetBasicTeamColour(team);
+			SetBasicTeamColour(team, alpha);
 		}
 	} else {
-		SetBasicTeamColour(team);
+		SetBasicTeamColour(team, alpha);
 	}
 }
 
 
-void CUnitDrawer::SetBasicTeamColour(int team) const
+void CUnitDrawer::SetBasicTeamColour(int team, float alpha) const
 {
 	unsigned char* col = teamHandler->Team(team)->color;
-	float texConstant[] = {col[0] / 255.f, col[1] / 255.f, col[2] / 255.f, 1};
+	float texConstant[] = {col[0] / 255.f, col[1] / 255.f, col[2] / 255.f, alpha};
 	glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, texConstant);
+	float matConstant[] = {1, 1, 1, alpha};
+	glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,matConstant);
 }
 
 
@@ -1255,6 +1271,9 @@ void CUnitDrawer::SetupBasicS3OTexture0(void) const
 	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE2_RGB_ARB, GL_TEXTURE);
 	glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND2_RGB_ARB, GL_ONE_MINUS_SRC_ALPHA);
 	glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_COMBINE_ARB);
+
+	// ALPHA = Ignore
+
 	glEnable(GL_TEXTURE_2D);
 }
 
@@ -1278,6 +1297,13 @@ void CUnitDrawer::SetupBasicS3OTexture1(void) const
 	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_RGB_ARB, GL_PRIMARY_COLOR_ARB);
 	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE1_RGB_ARB, GL_PREVIOUS_ARB);
 
+	// ALPHA = Current alpha * Alpha mask
+	glTexEnvi(GL_TEXTURE_ENV,GL_COMBINE_ALPHA_ARB, GL_MODULATE);
+	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_ALPHA_ARB, GL_TEXTURE);
+	glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND0_ALPHA_ARB, GL_SRC_ALPHA);
+	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE1_ALPHA_ARB, GL_PRIMARY_COLOR_ARB);
+	glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND1_ALPHA_ARB, GL_SRC_ALPHA);
+
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, whiteTex);
 }
@@ -1288,6 +1314,9 @@ void CUnitDrawer::CleanupBasicS3OTexture1(void) const
 	// reset texture1 state
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	glDisable(GL_TEXTURE_2D);
+
+	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE1_ALPHA_ARB, GL_PREVIOUS_ARB);
+
 	glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
 	glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_RGB_ARB, GL_TEXTURE);
 }
@@ -1353,6 +1382,9 @@ void CUnitDrawer::UnitDrawingTexturesOff(S3DModel *model)
  */
 void CUnitDrawer::UnitDrawingTexturesOn(S3DModel *model)
 {
+	// XXX FIXME GL_VERTEX_PROGRAM_ARB is very slow on ATIs here for some reason
+	// if clip planes are enabled
+	// check later after driver updates
 	if(advShading && !water->drawReflection){
 		glEnable(GL_VERTEX_PROGRAM_ARB);
 		glEnable(GL_FRAGMENT_PROGRAM_ARB);
@@ -1692,7 +1724,8 @@ void CUnitDrawer::DrawUnitDef(const UnitDef* unitDef, int team)
 
 
 
-void DrawCollisionVolume(const CollisionVolume* vol, GLUquadricObj* q) {
+void DrawCollisionVolume(const CollisionVolume* vol, GLUquadricObj* q)
+{
 	switch (vol->GetVolumeType()) {
 		case COLVOL_TYPE_FOOTPRINT:
 			// fall through, this is too hard to render correctly so just render sphere :)
@@ -1741,11 +1774,13 @@ void DrawCollisionVolume(const CollisionVolume* vol, GLUquadricObj* q) {
 	}
 }
 
-void DrawUnitDebugPieceTree(const LocalModelPiece* p, const LocalModelPiece* lap, CMatrix44f mat, GLUquadricObj* q) {
+
+void DrawUnitDebugPieceTree(const LocalModelPiece* p, const LocalModelPiece* lap, CMatrix44f mat, GLUquadricObj* q)
+{
 	mat.Translate(p->pos.x, p->pos.y, p->pos.z);
 	mat.RotateY(-p->rot[1]);
 	mat.RotateX(-p->rot[0]);
-	mat.RotateZ( p->rot[2]);
+	mat.RotateZ(-p->rot[2]);
 
 	glPushMatrix();
 		glMultMatrixf(mat.m);
@@ -1769,6 +1804,7 @@ void DrawUnitDebugPieceTree(const LocalModelPiece* p, const LocalModelPiece* lap
 		DrawUnitDebugPieceTree(p->childs[i], lap, mat, q);
 	}
 }
+
 
 inline void CUnitDrawer::DrawUnitDebug(CUnit* unit)
 {
@@ -1902,18 +1938,30 @@ void CUnitDrawer::DrawUnitBeingBuilt(CUnit* unit)
 	glDisable(GL_CLIP_PLANE1);
 	unitDrawer->UnitDrawingTexturesOn(unit->model);
 
+	// XXX FIXME
+	// ATI has issues with textures, clip planes and shader programs at once - very low performance
 	if (unit->buildProgress > 0.66f) {
-		const double plane0[4] = {0, -1, 0 , start + height * (unit->buildProgress * 3 - 2)};
-		glClipPlane(GL_CLIP_PLANE0, plane0);
+		if (gu->atiHacks) {
+			glDisable(GL_CLIP_PLANE0);
 
-		glPolygonOffset(1.0f, 1.0f);
-		glEnable(GL_POLYGON_OFFSET_FILL);
+			glPolygonOffset(1.0f, 1.0f);
+			glEnable(GL_POLYGON_OFFSET_FILL);
 
-		DrawUnitModel(unit);
+			DrawUnitModel(unit);
 
-		glDisable(GL_POLYGON_OFFSET_FILL);
+			glDisable(GL_POLYGON_OFFSET_FILL);
+		} else {
+			const double plane0[4] = {0, -1, 0 , start + height * (unit->buildProgress * 3 - 2)};
+			glClipPlane(GL_CLIP_PLANE0, plane0);
+
+			glPolygonOffset(1.0f, 1.0f);
+			glEnable(GL_POLYGON_OFFSET_FILL);
+
+			DrawUnitModel(unit);
+
+			glDisable(GL_POLYGON_OFFSET_FILL);
+		}
 	}
-
 	glDisable(GL_CLIP_PLANE0);
 }
 
@@ -2118,4 +2166,19 @@ void CUnitDrawer::DrawFeatureStatic(CFeature* feature)
 
 	feature->model->DrawStatic();
 	glPopMatrix();
+}
+
+bool CUnitDrawer::DrawAsIcon(const CUnit& unit, const float sqUnitCamDist) const {
+
+	bool asIcon = false;
+
+	if (distToGroundForIcons_useMethod) {
+		asIcon = distToGroundForIcons_areIcons;
+	} else {
+		const float iconDistMult = unit.unitDef->iconType->GetDistance();
+		const float realIconLength = iconLength * (iconDistMult * iconDistMult);
+		asIcon = (sqUnitCamDist > realIconLength);
+	}
+
+	return asIcon;
 }

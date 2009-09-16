@@ -8,9 +8,12 @@
 #include <time.h>
 #include <string>
 #include <map>
+#include <set>
 
 #include "GameController.h"
 #include "creg/creg_cond.h"
+
+#include "lib/gml/gml.h"
 
 class CScript;
 class CBaseWater;
@@ -24,6 +27,7 @@ class LuaInputReceiver;
 class CLoadSaveHandler;
 class Action;
 class ChatMessage;
+class SkirmishAIData;
 
 const int MAX_CONSECUTIVE_SIMFRAMES = 15;
 
@@ -179,10 +183,10 @@ private:
 	void ClientReadNet();
 	void UpdateUI(bool cam);
 	bool DrawWorld();
-	
+
 	void SimFrame();
 	void StartPlaying();
-	
+
 	// to smooth out SimFrame calls
 	int leastQue;       ///< Lowest value of que in the past second.
 	float timeLeft;     ///< How many SimFrame() calls we still may do.
@@ -191,6 +195,8 @@ private:
 
 	short oldHeading,oldPitch;
 	unsigned char oldStatus;
+
+	void StoreCloaked(bool save);
 };
 
 

@@ -32,12 +32,12 @@ public:
 
 	/// will stop a currently playing sound, if any
 	void Play(SoundItem* buffer, const float3& pos, float3 velocity, float volume, bool relative = false);
-	void PlayStream(const std::string& stream, float volume);
+	void PlayStream(const std::string& stream, float volume, bool enqueue);
 	void StreamStop();
 
 	void StreamPause();
-	unsigned GetStreamTime();
-	unsigned GetStreamPlayTime();
+	float GetStreamTime();
+	float GetStreamPlayTime();
 
 	static void SetPitch(float newPitch);
 	void SetVolume(float newVol);
@@ -62,6 +62,7 @@ private:
 	boost::mutex streamMutex;
 	unsigned loopStop;
 	static float heightAdjustedRolloffModifier;
+	static float referenceDistance;
 };
 
 #endif

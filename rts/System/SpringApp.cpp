@@ -40,13 +40,18 @@
 #include "Rendering/Textures/TAPalette.h"
 #include "Rendering/Textures/NamedTextures.h"
 #include "Rendering/Textures/TextureAtlas.h"
+#include "aGui/Gui.h"
 #include "Sim/Projectiles/ExplosionGenerator.h"
 #include "Sim/Misc/GlobalConstants.h"
 #include "LogOutput.h"
 #include "MouseInput.h"
+#include "InputHandler.h"
+#include "Joystick.h"
 #include "bitops.h"
 #include "GlobalUnsynced.h"
 #include "Util.h"
+#include "myMath.h"
+#include "FPUCheck.h"
 #include "Exceptions.h"
 #include "System/TimeProfiler.h"
 #include "System/Sound/Sound.h"
@@ -123,6 +128,8 @@ bool SpringApp::Initialize()
 	CrashHandler::Install();
 
 	ParseCmdLine();
+	CMyMath::Init();
+	good_fpu_control_registers("::Run");
 
 	// log OS version
 	// TODO: improve version logging of non-Windows OSes
@@ -154,13 +161,8 @@ bool SpringApp::Initialize()
 		SDL_WM_IconifyWindow();
 	}
 
-	// Enable auto quit?
-	if (cmdline->IsSet("quit")) {
-		gu->autoQuit = true;
-		gu->quitTime = cmdline->GetInt("quit");
-	}
-
 	InitOpenGL();
+	agui::InitGui();
 	palette.Init();
 
 	// Initialize keyboard
@@ -168,6 +170,7 @@ bool SpringApp::Initialize()
 	SDL_EnableKeyRepeat (SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 	SDL_SetModState (KMOD_NONE);
 
+	input.AddHandler(boost::bind(&SpringApp::MainEventHandler, this, _1));
 	keys = new boost::uint8_t[SDLK_LAST];
 	memset (keys,0,sizeof(boost::uint8_t)*SDLK_LAST);
 
@@ -227,6 +230,7 @@ bool SpringApp::Initialize()
 	}
 #endif // WIN32
 
+	InitJoystick();
 	// Create CGameSetup and CPreGame objects
 	Startup();
 
@@ -282,6 +286,7 @@ static bool MultisampleVerify(void)
  */
 bool SpringApp::InitWindow(const char* title)
 {
+	ScopedOnceTimer timer("SpringApp::InitWindow()");
 	unsigned int sdlInitFlags = SDL_INIT_VIDEO | SDL_INIT_TIMER;
 #ifdef WIN32
 	// the crash reporter should be catching the errors
@@ -414,6 +419,7 @@ bool SpringApp::GetDisplayGeometry()
 	}
 
 #ifdef __APPLE__
+	// todo: enable this function, RestoreWindowPosition() and SaveWindowPosition() on Mac
 	return false;
 
 
@@ -512,6 +518,7 @@ void SpringApp::SetupViewportGeometry()
 		}
 	}
 
+	agui::gui->UpdateScreenGeometry(gu->viewSizeX, gu->viewSizeY);
 	gu->pixelX = 1.0f / (float)gu->viewSizeX;
 	gu->pixelY = 1.0f / (float)gu->viewSizeY;
 
@@ -605,20 +612,19 @@ void SpringApp::LoadFonts()
  */
 void SpringApp::ParseCmdLine()
 {
-	cmdline->AddSwitch('f', "fullscreen",        "Run in fullscreen mode");
-	cmdline->AddSwitch('w', "window",            "Run in windowed mode");
-	cmdline->AddInt('x', "xresolution",          "Set X resolution");
-	cmdline->AddInt('y', "yresolution",          "Set Y resolution");
-	cmdline->AddSwitch('m', "minimise",          "Start minimised");
-	cmdline->AddSwitch('s', "server",            "Run as a server");
-	cmdline->AddSwitch('c', "client",            "Run as a client");
-	cmdline->AddSwitch('p', "projectiledump",    "Dump projectile class info in projectiles.txt");
-	cmdline->AddSwitch('t', "textureatlas",      "Dump each finalized textureatlas in textureatlasN.tga");
-	cmdline->AddInt('q', "quit",                 "Quit immediately on game over or after T seconds");
-	cmdline->AddString('n', "name",              "Set your player name");
-	cmdline->AddString('C', "config",            "Configuration file");
-	cmdline->AddSwitch(0,   "list-ai-interfaces","Dump a list of available AI Interfaces to stdout");
-	cmdline->AddSwitch(0,   "list-skirmish-ais", "Dump a list of available Skirmish AIs to stdout");
+	cmdline->AddSwitch('f', "fullscreen",         "Run in fullscreen mode");
+	cmdline->AddSwitch('w', "window",             "Run in windowed mode");
+	cmdline->AddInt(   'x', "xresolution",        "Set X resolution");
+	cmdline->AddInt(   'y', "yresolution",        "Set Y resolution");
+	cmdline->AddSwitch('m', "minimise",           "Start minimised");
+	cmdline->AddSwitch('s', "server",             "Run as a server");
+	cmdline->AddSwitch('c', "client",             "Run as a client");
+	cmdline->AddSwitch('p', "projectiledump",     "Dump projectile class info in projectiles.txt");
+	cmdline->AddSwitch('t', "textureatlas",       "Dump each finalized textureatlas in textureatlasN.tga");
+	cmdline->AddString('n', "name",               "Set your player name");
+	cmdline->AddString('C', "config",             "Configuration file");
+	cmdline->AddSwitch(0,   "list-ai-interfaces", "Dump a list of available AI Interfaces to stdout");
+	cmdline->AddSwitch(0,   "list-skirmish-ais",  "Dump a list of available Skirmish AIs to stdout");
 
 	try
 	{
@@ -629,6 +635,24 @@ void SpringApp::ParseCmdLine()
 		std::cerr << err.what() << std::endl << std::endl;
 		cmdline->PrintUsage("Spring", SpringVersion::GetFull());
 		exit(1);
+	}
+
+	// mutually exclusive options that cause spring to quit immediately
+	if (cmdline->IsSet("help")) {
+		cmdline->PrintUsage("Spring",SpringVersion::GetFull());
+		exit(0);
+	} else if (cmdline->IsSet("version")) {
+		std::cout << "Spring " << SpringVersion::GetFull() << std::endl;
+		exit(0);
+	} else if (cmdline->IsSet("projectiledump")) {
+		CCustomExplosionGenerator::OutputProjectileClassInfo();
+		exit(0);
+	} else if (cmdline->IsSet("list-ai-interfaces")) {
+		IAILibraryManager::OutputAIInterfacesInfo();
+		exit(0);
+	} else if (cmdline->IsSet("list-skirmish-ais")) {
+		IAILibraryManager::OutputSkirmishAIInfo();
+		exit(0);
 	}
 
 	if (cmdline->IsSet("config"))
@@ -651,25 +675,6 @@ void SpringApp::ParseCmdLine()
 		fullscreen = true;
 	}
 
-	// mutually exclusive options that cause spring to quit immediately
-	if (cmdline->IsSet("help")) {
-		cmdline->PrintUsage("Spring",SpringVersion::GetFull());
-		exit(0);
-	} else if (cmdline->IsSet("version")) {
-		std::cout << "Spring " << SpringVersion::GetFull() << std::endl;
-		exit(0);
-	} else if (cmdline->IsSet("projectiledump")) {
-		CCustomExplosionGenerator::OutputProjectileClassInfo();
-		exit(0);
-	} else if (cmdline->IsSet("list-ai-interfaces")) {
-		IAILibraryManager::OutputAIInterfacesInfo();
-		exit(0);
-	} else if (cmdline->IsSet("list-skirmish-ais")) {
-		IAILibraryManager::OutputSkirmishAIInfo();
-		exit(0);
-	}
-
-
 	if (cmdline->IsSet("textureatlas")) {
 		CTextureAtlas::debug = true;
 	}
@@ -687,7 +692,7 @@ void SpringApp::ParseCmdLine()
 
 	screenHeight = configHandler->Get("YResolution", YRES_DEFAULT);
 	if (cmdline->IsSet("yresolution"))
-		screenWidth = std::max(cmdline->GetInt("yresolution"), 480);
+		screenHeight = std::max(cmdline->GetInt("yresolution"), 480);
 
 	windowPosX  = configHandler->Get("WindowPosX", 32);
 	windowPosY  = configHandler->Get("WindowPosY", 32);
@@ -831,8 +836,6 @@ int SpringApp::Update()
 	if (FSAA)
 		glEnable(GL_MULTISAMPLE_ARB);
 
-	mouseInput->Update();
-
 	int ret = 1;
 	if (activeController) {
 #if !defined(USE_GML) || !GML_ENABLE_SIM
@@ -936,10 +939,8 @@ int SpringApp::Run(int argc, char *argv[])
 	gmlProcessor->AuxWork(&SpringApp::Simcb,this); // start sim thread
 #	endif
 #endif
-	SDL_Event event;
-	bool done = false;
-
-	while (!done) {
+	while (true) // end is handled by globalQuit
+	{
 #ifdef WIN32
 		static unsigned lastreset = 0;
 		unsigned curreset = SDL_GetTicks();
@@ -950,134 +951,12 @@ int SpringApp::Run(int argc, char *argv[])
 				SystemParametersInfo(SPI_SETSCREENSAVETIMEOUT, timeout, NULL, 0);
 		}
 #endif
-		while (SDL_PollEvent(&event)) {
-			switch (event.type) {
-				case SDL_VIDEORESIZE: {
-
-					GML_STDMUTEX_LOCK(sim); // Run
-
-					screenWidth = event.resize.w;
-					screenHeight = event.resize.h;
-#ifndef WIN32
-					// HACK   We don't want to break resizing on windows (again?),
-					//        so someone should test this very well before enabling it.
-					SetSDLVideoMode();
-#endif
-					InitOpenGL();
-					activeController->ResizeEvent();
-					break;
-				}
-				case SDL_VIDEOEXPOSE: {
-
-					GML_STDMUTEX_LOCK(sim); // Run
-
-					// re-initialize the stencil
-					glClearStencil(0);
-					glClear(GL_STENCIL_BUFFER_BIT); SDL_GL_SwapBuffers();
-					glClear(GL_STENCIL_BUFFER_BIT); SDL_GL_SwapBuffers();
-					SetupViewportGeometry();
-					break;
-				}
-				case SDL_QUIT: {
-					done = true;
-					break;
-				}
-				case SDL_ACTIVEEVENT: {
-					if (event.active.state & SDL_APPACTIVE) {
-						gu->active = !!event.active.gain;
-						if (sound)
-							sound->Iconified(!event.active.gain);
-					}
-
-					if (mouse && mouse->locked) {
-						mouse->ToggleState();
-					}
-					break;
-				}
-
-				case SDL_MOUSEMOTION:
-				case SDL_MOUSEBUTTONDOWN:
-				case SDL_MOUSEBUTTONUP:
-				case SDL_SYSWMEVENT: {
-					mouseInput->HandleSDLMouseEvent (event);
-					break;
-				}
-				case SDL_KEYDOWN: {
-					int i = event.key.keysym.sym;
-					currentUnicode = event.key.keysym.unicode;
-
-					const bool isRepeat = !!keys[i];
-
-					UpdateSDLKeys ();
-
-					if (activeController) {
-						if (i <= SDLK_DELETE) {
-							i = tolower(i);
-						}
-						else if (i == SDLK_RSHIFT) { i = SDLK_LSHIFT; }
-						else if (i == SDLK_RCTRL)  { i = SDLK_LCTRL;  }
-						else if (i == SDLK_RMETA)  { i = SDLK_LMETA;  }
-						else if (i == SDLK_RALT)   { i = SDLK_LALT;   }
-
-						if (keyBindings) {
-							const int fakeMetaKey = keyBindings->GetFakeMetaKey();
-							if (fakeMetaKey >= 0) {
-								keys[SDLK_LMETA] |= keys[fakeMetaKey];
-							}
-						}
-
-						activeController->KeyPressed(i, isRepeat);
-
-						if (activeController->userWriting){
-							// use unicode for printed characters
-							i = event.key.keysym.unicode;
-							if ((i >= SDLK_SPACE) && (i <= SDLK_DELETE)) {
-								CGameController* ac = activeController;
-								if (ac->ignoreNextChar || ac->ignoreChar == char(i)) {
-									ac->ignoreNextChar = false;
-								} else {
-									if (i < SDLK_DELETE && (!isRepeat || ac->userInput.length()>0)) {
-										const int len = (int)ac->userInput.length();
-										ac->writingPos = std::max(0, std::min(len, ac->writingPos));
-										char str[2] = { char(i), 0 };
-										ac->userInput.insert(ac->writingPos, str);
-										ac->writingPos++;
-									}
-								}
-							}
-						}
-					}
-					activeController->ignoreNextChar = false;
-					break;
-				}
-				case SDL_KEYUP: {
-					int i = event.key.keysym.sym;
-					currentUnicode = event.key.keysym.unicode;
-
-					UpdateSDLKeys();
-
-					if (activeController) {
-						if (i <= SDLK_DELETE) {
-							i = tolower(i);
-						}
-						else if (i == SDLK_RSHIFT) { i = SDLK_LSHIFT; }
-						else if (i == SDLK_RCTRL)  { i = SDLK_LCTRL;  }
-						else if (i == SDLK_RMETA)  { i = SDLK_LMETA;  }
-						else if (i == SDLK_RALT)   { i = SDLK_LALT;   }
-
-						if (keyBindings) {
-							const int fakeMetaKey = keyBindings->GetFakeMetaKey();
-							if (fakeMetaKey >= 0) {
-								keys[SDLK_LMETA] |= keys[fakeMetaKey];
-							}
-						}
-
-						activeController->KeyReleased(i);
-					}
-					break;
-				}
-				default:
-					break;
+		{
+			SCOPED_TIMER("Input");
+			mouseInput->Update();
+			SDL_Event event;
+			while (SDL_PollEvent(&event)) {
+				input.PushEvent(event);
 			}
 		}
 		if (globalQuit)
@@ -1114,6 +993,9 @@ int SpringApp::Run(int argc, char *argv[])
  */
 void SpringApp::RestoreWindowPosition()
 {
+#ifdef __APPLE__
+	return;
+#else
 	if (!fullscreen) {
 		SDL_SysWMinfo info;
 		SDL_VERSION(&info.version);
@@ -1161,6 +1043,7 @@ void SpringApp::RestoreWindowPosition()
 #endif
 		}
 	}
+#endif // ifdef __APPLE__
 }
 
 /**
@@ -1168,6 +1051,9 @@ void SpringApp::RestoreWindowPosition()
  */
 void SpringApp::SaveWindowPosition()
 {
+#ifdef __APPLE__
+	return;
+#else
 	if (!fullscreen) {
 #if defined(_WIN32)
 		SDL_SysWMinfo info;
@@ -1194,6 +1080,7 @@ void SpringApp::SaveWindowPosition()
 		configHandler->Set("WindowPosX", windowPosX);
 		configHandler->Set("WindowPosY", windowPosY);
 	}
+#endif
 }
 
 
@@ -1224,4 +1111,129 @@ void SpringApp::Shutdown()
 #ifdef USE_MMGR
 	m_dumpMemoryReport();
 #endif
+}
+
+bool SpringApp::MainEventHandler(const SDL_Event& event)
+{
+	switch (event.type) {
+		case SDL_VIDEORESIZE: {
+
+			GML_STDMUTEX_LOCK(sim); // Run
+
+			screenWidth = event.resize.w;
+			screenHeight = event.resize.h;
+#ifndef WIN32
+			// HACK   We don't want to break resizing on windows (again?),
+			//        so someone should test this very well before enabling it.
+			SetSDLVideoMode();
+#endif
+			InitOpenGL();
+			activeController->ResizeEvent();
+			break;
+		}
+		case SDL_VIDEOEXPOSE: {
+
+			GML_STDMUTEX_LOCK(sim); // Run
+
+			// re-initialize the stencil
+			glClearStencil(0);
+			glClear(GL_STENCIL_BUFFER_BIT); SDL_GL_SwapBuffers();
+			glClear(GL_STENCIL_BUFFER_BIT); SDL_GL_SwapBuffers();
+			SetupViewportGeometry();
+			break;
+		}
+		case SDL_QUIT: {
+			globalQuit = true;
+			break;
+		}
+		case SDL_ACTIVEEVENT: {
+			if (event.active.state & SDL_APPACTIVE) {
+				gu->active = !!event.active.gain;
+				if (sound)
+					sound->Iconified(!event.active.gain);
+			}
+
+			if (mouse && mouse->locked) {
+				mouse->ToggleState();
+			}
+			break;
+		}
+		case SDL_KEYDOWN: {
+			int i = event.key.keysym.sym;
+			currentUnicode = event.key.keysym.unicode;
+
+			const bool isRepeat = !!keys[i];
+
+			UpdateSDLKeys ();
+
+			if (activeController) {
+				if (i <= SDLK_DELETE) {
+					i = tolower(i);
+				}
+				else if (i == SDLK_RSHIFT) { i = SDLK_LSHIFT; }
+				else if (i == SDLK_RCTRL)  { i = SDLK_LCTRL;  }
+				else if (i == SDLK_RMETA)  { i = SDLK_LMETA;  }
+				else if (i == SDLK_RALT)   { i = SDLK_LALT;   }
+
+				if (keyBindings) {
+					const int fakeMetaKey = keyBindings->GetFakeMetaKey();
+					if (fakeMetaKey >= 0) {
+						keys[SDLK_LMETA] |= keys[fakeMetaKey];
+					}
+				}
+
+				activeController->KeyPressed(i, isRepeat);
+
+				if (activeController->userWriting){
+					// use unicode for printed characters
+					i = event.key.keysym.unicode;
+					if ((i >= SDLK_SPACE) && (i <= SDLK_DELETE)) {
+						CGameController* ac = activeController;
+						if (ac->ignoreNextChar || ac->ignoreChar == char(i)) {
+							ac->ignoreNextChar = false;
+						} else {
+							if (i < SDLK_DELETE && (!isRepeat || ac->userInput.length()>0)) {
+								const int len = (int)ac->userInput.length();
+								ac->writingPos = std::max(0, std::min(len, ac->writingPos));
+								char str[2] = { char(i), 0 };
+								ac->userInput.insert(ac->writingPos, str);
+								ac->writingPos++;
+							}
+						}
+					}
+				}
+			}
+			activeController->ignoreNextChar = false;
+			break;
+		}
+		case SDL_KEYUP: {
+			int i = event.key.keysym.sym;
+			currentUnicode = event.key.keysym.unicode;
+
+			UpdateSDLKeys();
+
+			if (activeController) {
+				if (i <= SDLK_DELETE) {
+					i = tolower(i);
+				}
+				else if (i == SDLK_RSHIFT) { i = SDLK_LSHIFT; }
+				else if (i == SDLK_RCTRL)  { i = SDLK_LCTRL;  }
+				else if (i == SDLK_RMETA)  { i = SDLK_LMETA;  }
+				else if (i == SDLK_RALT)   { i = SDLK_LALT;   }
+
+				if (keyBindings) {
+					const int fakeMetaKey = keyBindings->GetFakeMetaKey();
+					if (fakeMetaKey >= 0) {
+						keys[SDLK_LMETA] |= keys[fakeMetaKey];
+					}
+				}
+
+				activeController->KeyReleased(i);
+			}
+			break;
+		}
+		default:
+			break;
+	}
+	return false;
 }

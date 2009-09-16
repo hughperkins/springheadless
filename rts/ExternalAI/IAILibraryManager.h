@@ -53,11 +53,6 @@ public:
 	virtual const T_interfaceInfos& GetInterfaceInfos() const = 0;
 	virtual const T_skirmishAIInfos& GetSkirmishAIInfos() const = 0;
 
-	virtual const std::vector<std::string>& GetSkirmishAIOptionValueKeys(int teamId) const = 0;
-	virtual const std::map<std::string, std::string>& GetSkirmishAIOptionValues(int teamId) const = 0;
-
-	virtual const T_skirmishAIInfos& GetUsedSkirmishAIInfos() = 0;
-
 	typedef std::map<const AIInterfaceKey, std::set<std::string> > T_dupInt;
 	typedef std::map<const SkirmishAIKey, std::set<std::string> >
 			T_dupSkirm;
@@ -97,8 +92,34 @@ public:
 	static IAILibraryManager* GetInstance();
 	static void OutputAIInterfacesInfo();
 	static void OutputSkirmishAIInfo();
+
+protected:
+	/**
+	 * Compares two version strings.
+	 * Splits the version strings at the '.' signs, and compares the parts.
+	 * If the number of parts do not match, then the string with less parts
+	 * is filled up with '.0' parts at its right, eg:
+	 * version 1: 0.1.2   -> 0.1.2.0
+	 * version 2: 0.1.2.3 -> 0.1.2.3
+	 * The left most part has the highest significance.
+	 * Comparison of the individual parts is done with std::string::compare(),
+	 * which implies for example that letters > numbers.
+	 * examples:
+	 * ("2", "1") -> 1
+	 * ("1", "1") -> 0
+	 * ("1", "2") -> -1
+	 * ("0.1.1", "0.1") -> 1
+	 * ("1.a", "1.9") -> 1
+	 * ("1.a", "1.A") -> 1
+	 */
+	static int VersionCompare(
+			const std::string& version1,
+			const std::string& version2);
+
 private:
 	static IAILibraryManager* myAILibraryManager;
 };
+
+#define aiLibManager IAILibraryManager::GetInstance()
 
 #endif // _IAILIBRARYMANAGER_H

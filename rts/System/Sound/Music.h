@@ -22,7 +22,7 @@ public:
 	 * NOT threadsafe, unlike the other functions!
 	 * If another file is playing, it will stop it and play the new one instead.
 	 */
-	void Play(const std::string& path, float volume = 1.0f);
+	void Play(const std::string& path, float volume = 1.0f, bool enqueue = false);
 
 	void Pause();
 
@@ -32,8 +32,8 @@ public:
 	 * Don't call this if you just want to play another file (for performance).
 	 */
 	void Stop();
-	unsigned int GetTime();
-	unsigned int GetPlayTime();
+	float GetTime();
+	float GetPlayTime();
 
 private:
 	SoundSource* current;

@@ -156,11 +156,11 @@ PacketType CBaseNetProtocol::SendDirectControlUpdate(uchar myPlayerNum, uchar st
 }
 
 
-PacketType CBaseNetProtocol::SendAttemptConnect(const std::string name, const std::string version)
+PacketType CBaseNetProtocol::SendAttemptConnect(const std::string name, const std::string& passwd, const std::string version)
 {
-	boost::uint16_t size = 5 + name.size() + version.size();
+	boost::uint16_t size = 6 + name.size() + passwd.size() + version.size();
 	PackPacket* packet = new PackPacket(size , NETMSG_ATTEMPTCONNECT);
-	*packet << size << name << version;
+	*packet << size << name << passwd << version;
 	return PacketType(packet);
 }
 
@@ -282,31 +282,58 @@ PacketType CBaseNetProtocol::SendLuaMsg(uchar myPlayerNum, unsigned short script
 	return PacketType(packet);
 }
 
-PacketType CBaseNetProtocol::SendGiveAwayEverything(uchar myPlayerNum, uchar giveTo)
+PacketType CBaseNetProtocol::SendGiveAwayEverything(uchar myPlayerNum, uchar giveToTeam, uchar takeFromTeam)
 {
-	PackPacket* packet = new PackPacket(4, NETMSG_TEAM);
-	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_GIVEAWAY) << giveTo;
+	PackPacket* packet = new PackPacket(5, NETMSG_TEAM);
+	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_GIVEAWAY) << giveToTeam << takeFromTeam;
 	return PacketType(packet);
 }
 
 PacketType CBaseNetProtocol::SendResign(uchar myPlayerNum)
 {
-	PackPacket* packet = new PackPacket(4, NETMSG_TEAM);
-	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_RESIGN) << static_cast<uchar>(0);
+	PackPacket* packet = new PackPacket(5, NETMSG_TEAM);
+	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_RESIGN) << static_cast<uchar>(0) << static_cast<uchar>(0);
 	return PacketType(packet);
 }
 
 PacketType CBaseNetProtocol::SendJoinTeam(uchar myPlayerNum, uchar wantedTeamNum)
 {
-	PackPacket* packet = new PackPacket(4, NETMSG_TEAM);
-	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_JOIN_TEAM) << wantedTeamNum;
+	PackPacket* packet = new PackPacket(5, NETMSG_TEAM);
+	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_JOIN_TEAM) << wantedTeamNum << static_cast<uchar>(0);
 	return PacketType(packet);
 }
 
 PacketType CBaseNetProtocol::SendTeamDied(uchar myPlayerNum, uchar whichTeam)
 {
-	PackPacket* packet = new PackPacket(4, NETMSG_TEAM);
-	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_TEAM_DIED) << whichTeam;
+	PackPacket* packet = new PackPacket(5, NETMSG_TEAM);
+	*packet << myPlayerNum << static_cast<uchar>(TEAMMSG_TEAM_DIED) << whichTeam << static_cast<uchar>(0);
+	return PacketType(packet);
+}
+
+PacketType CBaseNetProtocol::SendAICreated(const uchar myPlayerNum,
+                                           const uint  whichSkirmishAI,
+                                           const uchar team,
+                                           const std::string& name)
+{
+	// do not hand optimize this math; the compiler will do that
+	const uint size = 1 + 1 + 1 + 4 + 1 + (name.size() + 1);
+	PackPacket* packet = new PackPacket(size, NETMSG_AI_CREATED);
+	*packet
+		<< static_cast<uchar>(size)
+		<< myPlayerNum
+		<< whichSkirmishAI
+		<< team
+		<< name;
+	return PacketType(packet);
+}
+
+PacketType CBaseNetProtocol::SendAIStateChanged(const uchar myPlayerNum,
+                                                const uint  whichSkirmishAI,
+                                                const uchar newState)
+{
+	// do not hand optimize this math; the compiler will do that
+	PackPacket* packet = new PackPacket(1 + 1 + 4 + 1, NETMSG_AI_STATE_CHANGED);
+	*packet << myPlayerNum << whichSkirmishAI << newState;
 	return PacketType(packet);
 }
 
@@ -353,7 +380,7 @@ PacketType CBaseNetProtocol::SendSdBlockresponse(uchar myPlayerNum, std::vector<
 	*packet << static_cast<boost::uint16_t>(size) << myPlayerNum << checksums;
 	return PacketType(packet);
 }
-#endif
+#endif // SYNCDEBUG
 /* FIXME: add these:
  NETMSG_SD_CHKREQUEST    = 41,
  NETMSG_SD_CHKRESPONSE   = 42,
@@ -365,9 +392,9 @@ PacketType CBaseNetProtocol::SendSdBlockresponse(uchar myPlayerNum, std::vector<
 CBaseNetProtocol::CBaseNetProtocol()
 {
 	netcode::ProtocolDef* proto = netcode::ProtocolDef::instance();
-  // proto->AddType() length parameter:
-  //   > 0:  if its fixed length
-  //   < 0:  means the next x bytes represent the length
+	// proto->AddType() length parameter:
+	//   > 0:  if its fixed length
+	//   < 0:  means the next x bytes represent the length
 
 	proto->AddType(NETMSG_KEYFRAME, 5);
 	proto->AddType(NETMSG_NEWFRAME, 1);
@@ -404,19 +431,22 @@ CBaseNetProtocol::CBaseNetProtocol()
 	proto->AddType(NETMSG_PLAYERINFO, 8);
 	proto->AddType(NETMSG_PLAYERLEFT, 3);
 	proto->AddType(NETMSG_LUAMSG, -2);
-	proto->AddType(NETMSG_TEAM, 4);
+	proto->AddType(NETMSG_TEAM, 5);
 	proto->AddType(NETMSG_GAMEDATA, -2);
 	proto->AddType(NETMSG_ALLIANCE, 4);
 	proto->AddType(NETMSG_CCOMMAND, -2);
 	proto->AddType(NETMSG_TEAMSTAT, 2 + sizeof(CTeam::Statistics));
-	
+
+	proto->AddType(NETMSG_AI_CREATED, -1);
+	proto->AddType(NETMSG_AI_STATE_CHANGED, 7);
+
 #ifdef SYNCDEBUG
 	proto->AddType(NETMSG_SD_CHKREQUEST, 5);
 	proto->AddType(NETMSG_SD_CHKRESPONSE, -2);
 	proto->AddType(NETMSG_SD_RESET, 1);
 	proto->AddType(NETMSG_SD_BLKREQUEST, 7);
 	proto->AddType(NETMSG_SD_BLKRESPONSE, -2);
-#endif
+#endif // SYNCDEBUG
 }
 
 CBaseNetProtocol::~CBaseNetProtocol()

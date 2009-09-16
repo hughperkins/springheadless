@@ -5,12 +5,20 @@
 #include <SDL_timer.h>
 #include <boost/bind.hpp>
 #include <sstream>
+#ifndef _WIN32
+	#include <unistd.h>
+	#define EXECLP execlp
+#else
+	#include <process.h>
+	#define EXECLP _execlp
+#endif
 #include <stack>
+#include <boost/cstdint.hpp>
 
 #include "ClientSetup.h"
+#include "SelectionWidget.h"
 #include "PreGame.h"
 #include "Rendering/glFont.h"
-#include "Rendering/GL/glList.h"
 #include "LogOutput.h"
 #include "Exceptions.h"
 #include "TdfParser.h"
@@ -20,16 +28,63 @@
 #include "FileSystem/VFSHandler.h"
 #include "FileSystem/FileSystem.h"
 #include "ConfigHandler.h"
+#include "InputHandler.h"
 #include "StartScripts/ScriptHandler.h"
-#include <boost/cstdint.hpp>
+#include "StartScripts/SkirmishAITestScript.h"
+#include "aGui/Gui.h"
+#include "aGui/VerticalLayout.h"
+#include "aGui/HorizontalLayout.h"
+#include "aGui/Button.h"
+#include "aGui/LineEdit.h"
+#include "aGui/TextElement.h"
+#include "aGui/Window.h"
+#include "aGui/Picture.h"
 
 using std::string;
+using agui::Button;
+using agui::HorizontalLayout;
 
 extern boost::uint8_t* keys;
 extern bool globalQuit;
 
+class ConnectWindow : public agui::Window
+{
+public:
+	ConnectWindow() : agui::Window("Connect to server")
+	{
+		agui::gui->AddElement(this);
+		SetPos(0.5, 0.5);
+		SetSize(0.4, 0.2);
+		
+		agui::VerticalLayout* wndLayout = new agui::VerticalLayout(this);
+		HorizontalLayout* input = new HorizontalLayout(wndLayout);
+		agui::TextElement* label = new agui::TextElement("Address:", input);
+		address = new agui::LineEdit(input);
+		address->SetFocus(true);
+		address->SetContent(configHandler->GetString("address", ""));
+		HorizontalLayout* buttons = new HorizontalLayout(wndLayout);
+		Button* close = new Button("Close", buttons);
+		close->Clicked.connect(boost::bind(&ConnectWindow::Finish, this, false));
+		Button* connect = new Button("Connect", buttons);
+		connect->Clicked.connect(boost::bind(&ConnectWindow::Finish, this, true));
+		GeometryChange();
+	}
+
+	boost::signal<void (std::string)> Connect;
+	agui::LineEdit* address;
+	
+private:
+	void Finish(bool connect)
+	{
+		if (connect)
+			Connect(address->GetContent());
+		else
+			WantClose();
+	};
+};
+
 std::string CreateDefaultSetup(const std::string& map, const std::string& mod, const std::string& script,
-			const std::string& playername, int gameMode)
+			const std::string& playername)
 {
 	TdfParser::TdfSection setup;
 	TdfParser::TdfSection* game = setup.construct_subsection("GAME");
@@ -37,7 +92,7 @@ std::string CreateDefaultSetup(const std::string& map, const std::string& mod, c
 	game->add_name_value("Gametype", mod);
 
 	TdfParser::TdfSection* modopts = game->construct_subsection("MODOPTIONS");
-	modopts->AddPair("GameMode", gameMode);
+	modopts->AddPair("GameMode", 3);
 	modopts->AddPair("MaxSpeed", 20);
 	modopts->add_name_value("Scriptname", script);
 
@@ -50,16 +105,25 @@ std::string CreateDefaultSetup(const std::string& map, const std::string& mod, c
 	player0->add_name_value("Name", playername);
 	player0->AddPair("Team", 0);
 
-	TdfParser::TdfSection* player1 = game->construct_subsection("PLAYER1");
-	player1->add_name_value("Name", "Enemy");
-	player1->AddPair("Team", 1);
+	const bool isSkirmishAITestScript =
+			(script.substr(0, CSkirmishAITestScript::SCRIPT_NAME_PRELUDE.size())
+			== CSkirmishAITestScript::SCRIPT_NAME_PRELUDE);
+	if (!isSkirmishAITestScript) {
+		TdfParser::TdfSection* player1 = game->construct_subsection("PLAYER1");
+		player1->add_name_value("Name", "Enemy");
+		player1->AddPair("Team", 1);
+	}
 
 	TdfParser::TdfSection* team0 = game->construct_subsection("TEAM0");
 	team0->AddPair("TeamLeader", 0);
 	team0->AddPair("AllyTeam", 0);
 
 	TdfParser::TdfSection* team1 = game->construct_subsection("TEAM1");
-	team1->AddPair("TeamLeader", 1);
+	if (isSkirmishAITestScript) {
+		team1->AddPair("TeamLeader", 0);
+	} else {
+		team1->AddPair("TeamLeader", 1);
+	}
 	team1->AddPair("AllyTeam", 1);
 
 	TdfParser::TdfSection* ally0 = game->construct_subsection("ALLYTEAM0");
@@ -74,247 +138,170 @@ std::string CreateDefaultSetup(const std::string& map, const std::string& mod, c
 	return str.str();
 }
 
-SelectMenu::SelectMenu(bool server): showList(NULL)
+SelectMenu::SelectMenu(bool server) : GuiElement(NULL), conWindow(NULL)
 {
+	SetPos(0,0);
+	SetSize(1,1);
+	agui::gui->AddElement(this, true);
 	mySettings = new ClientSetup();
+
 	mySettings->isHost = server;
 	mySettings->myPlayerName = configHandler->GetString("name", "UnnamedPlayer");
-
 	if (mySettings->myPlayerName.empty()) {
 		mySettings->myPlayerName = "UnnamedPlayer";
 	} else {
 		mySettings->myPlayerName = StringReplaceInPlace(mySettings->myPlayerName, ' ', '_');
 	}
 
+	{ // GUI stuff
+		agui::Picture* background = new agui::Picture(this);;
+		{
+			std::string archive = archiveScanner->ModNameToModArchive("Spring Bitmaps");
+			std::string archivePath = archiveScanner->GetArchivePath(archive)+archive;
+			vfsHandler->AddArchive(archivePath, false);
+			background->Load("bitmaps/ui/background.jpg");
+			vfsHandler->RemoveArchive(archivePath);
+		}
+		selw = new SelectionWidget(this);
+		agui::VerticalLayout* menu = new agui::VerticalLayout(this);
+		menu->SetPos(0.1, 0.5);
+		menu->SetSize(0.4, 0.4);
+		menu->SetBorder(1.2f);
+		agui::TextElement* name = new agui::TextElement("Spring", menu);
+		Button* single = new Button("Test the Game", menu);
+		single->Clicked.connect(boost::bind(&SelectMenu::Single, this));
+		Button* multi = new Button("Start the Lobby", menu);
+		multi->Clicked.connect(boost::bind(&SelectMenu::Multi, this));
+		Button* settings = new Button("Edit settings", menu);
+		settings->Clicked.connect(boost::bind(&SelectMenu::Settings, this));
+		Button* direct = new Button("Direct connect", menu);
+		direct->Clicked.connect(boost::bind(&SelectMenu::ShowConnectWindow, this, true));
+		Button* quit = new Button("Quit", menu);
+		quit->Clicked.connect(boost::bind(&SelectMenu::Quit, this));
+		background->GeometryChange();
+	}
+
 	if (!mySettings->isHost) {
-		userInput = configHandler->GetString("address", "");
-		writingPos = userInput.length();
-		userPrompt = "Enter server address: ";
-		userWriting = true;
-	} else {
-		ShowModList();
+		ShowConnectWindow(true);
 	}
 }
 
-
-int SelectMenu::KeyPressed(unsigned short k,bool isRepeat)
+SelectMenu::~SelectMenu()
 {
-	if (k == SDLK_ESCAPE){
-		if(keys[SDLK_LSHIFT]){
-			logOutput.Print("User exited");
-			globalQuit=true;
-		} else
-			logOutput.Print("Use shift-esc to quit");
-	}
-
-	if (showList) { //are we currently showing a list?
-		showList->KeyPressed(k, isRepeat);
-		return 0;
-	}
-
-	if (userWriting) {
-		keys[k] = true;
-		if (k == SDLK_v && keys[SDLK_LCTRL]){
-			PasteClipboard();
-			return 0;
-		}
-		if(k == SDLK_BACKSPACE){
-			if (!userInput.empty() && (writingPos > 0)) {
-				userInput.erase(writingPos - 1, 1);
-				writingPos--;
-			}
-			return 0;
-		}
-		if (k == SDLK_DELETE) {
-			if (!userInput.empty() && (writingPos < (int)userInput.size())) {
-				userInput.erase(writingPos, 1);
-			}
-			return 0;
-		}
-		else if (k == SDLK_LEFT) {
-			writingPos = std::max(0, std::min((int)userInput.length(), writingPos - 1));
-		}
-		else if (k == SDLK_RIGHT) {
-			writingPos = std::max(0, std::min((int)userInput.length(), writingPos + 1));
-		}
-		else if (k == SDLK_HOME) {
-			writingPos = 0;
-		}
-		else if (k == SDLK_END) {
-			writingPos = (int)userInput.length();
-		}
-		if (k == SDLK_RETURN){
-			userWriting = false;
-			return 0;
-		}
-		return 0;
-	}
-
-	return 0;
+	ShowConnectWindow(false);
 }
 
 bool SelectMenu::Draw()
 {
 	SDL_Delay(10); // milliseconds
 	ClearScreen();
-
-	if (userWriting) {
-		const std::string tempstring = userPrompt + userInput;
-
-		const float xStart = 0.10f;
-		const float yStart = 0.75f;
-
-		const float fontScale = 1.0f;
-		const float fontSize  = fontScale * font->GetSize();
-
-		// draw the caret
-		const int caretPos = userPrompt.length() + writingPos;
-		const string caretStr = tempstring.substr(0, caretPos);
-		const float caretWidth = fontSize * font->GetTextWidth(caretStr) * gu->pixelX;
-		char c = userInput[writingPos];
-		if (c == 0) { c = ' '; }
-		const float cw = fontSize * font->GetCharacterWidth(c) * gu->pixelX;
-		const float csx = xStart + caretWidth;
-		glDisable(GL_TEXTURE_2D);
-		const float f = 0.5f * (1.0f + fastmath::sin((float)SDL_GetTicks() * 0.015f));
-		glColor4f(f, f, f, 0.75f);
-		glRectf(csx, yStart, csx + cw, yStart + fontSize * font->GetLineHeight() * gu->pixelY);
-		glEnable(GL_TEXTURE_2D);
-
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		font->glPrint(xStart, yStart, fontSize, FONT_NORM, tempstring);
-	}
-
-	if (showList) {
-		showList->Draw();
-	}
+	agui::gui->Draw();
 
 	return true;
 }
 
 bool SelectMenu::Update()
 {
-	if (!mySettings->isHost)
-	{
-		// we are a client, wait for user to type address
-		if (!userWriting)
-		{
-			configHandler->SetString("address",userInput);
-			mySettings->hostip = userInput;
-			pregame = new CPreGame(mySettings);
-			delete this;
-		}
-	}
-
 	return true;
 }
 
-/** Create a CglList for selecting the map. */
-void SelectMenu::ShowMapList()
+void SelectMenu::Single()
 {
-	CglList* list = new CglList("Select map", boost::bind(&SelectMenu::SelectMap, this, _1), 2);
-	std::vector<std::string> found = filesystem.FindFiles("maps/","{*.sm3,*.smf}");
-	std::vector<std::string> arFound = archiveScanner->GetMaps();
-	if (found.begin() == found.end() && arFound.begin() == arFound.end()) {
-		throw content_error("PreGame couldn't find any map files");
-		return;
+	static bool once = false;
+	if (selw->userMod == SelectionWidget::NoModSelect)
+	{
+		selw->ShowModList();
 	}
-
-	std::set<std::string> mapSet; // use a set to sort them
-	for (std::vector<std::string>::iterator it = found.begin(); it != found.end(); it++) {
-		std::string fn(filesystem.GetFilename(*it));
-		mapSet.insert(fn.c_str());
+	else if (selw->userMap == SelectionWidget::NoMapSelect)
+	{
+		selw->ShowMapList();
 	}
-	for (std::vector<std::string>::iterator it = arFound.begin(); it != arFound.end(); it++) {
-		mapSet.insert((*it).c_str());
+	else if (selw->userScript == SelectionWidget::NoScriptSelect)
+	{
+		selw->ShowScriptList();
 	}
-
-	list->AddItem("Random map", "Random map"); // always first
-	for (std::set<std::string>::iterator sit = mapSet.begin(); sit != mapSet.end(); ++sit) {
-		list->AddItem(*sit, *sit);
+	else if (!once) // in case of double-click
+	{
+		once = true;
+		mySettings->isHost = true;
+		pregame = new CPreGame(mySettings);
+		pregame->LoadSetupscript(CreateDefaultSetup(selw->userMap, selw->userMod, selw->userScript, mySettings->myPlayerName));
+		agui::gui->RmElement(this);
 	}
-	showList = list;
 }
 
-
-/** Create a CglList for selecting the script. */
-void SelectMenu::ShowScriptList()
+void SelectMenu::Settings()
 {
-	CglList* list = CScriptHandler::Instance().GenList(boost::bind(&SelectMenu::SelectScript, this, _1));
-	showList = list;
+#ifdef __unix__
+	const std::string settingsProgram = "springsettings";
+#else
+	const std::string settingsProgram = "springsettings.exe";
+#endif
+	EXECLP(settingsProgram.c_str(), settingsProgram.c_str(), NULL);
 }
 
-
-/** Create a CglList for selecting the mod. */
-void SelectMenu::ShowModList()
+void SelectMenu::Multi()
 {
-	CglList* list = new CglList("Select mod", boost::bind(&SelectMenu::SelectMod, this, _1), 3);
-	std::vector<CArchiveScanner::ModData> found = archiveScanner->GetPrimaryMods();
-	if (found.empty()) {
-		throw content_error("PreGame couldn't find any mod files");
-		return;
-	}
-
-	std::map<std::string, std::string> modMap; // name, desc  (using a map to sort)
-	for (std::vector<CArchiveScanner::ModData>::iterator it = found.begin(); it != found.end(); ++it) {
-		modMap[it->name] = it->description;
-	}
-
-	list->AddItem("Random mod", "Random mod"); // always first
-	std::map<std::string, std::string>::iterator mit;
-	for (mit = modMap.begin(); mit != modMap.end(); ++mit) {
-		list->AddItem(mit->first, mit->second);
-	}
-	showList = list;
+#ifdef __unix__
+	const std::string defLobby = configHandler->GetString("DefaultLobby", "springlobby");
+#else
+	const std::string defLobby = configHandler->GetString("DefaultLobby", "springlobby.exe");
+#endif
+	EXECLP(defLobby.c_str(), defLobby.c_str(), NULL);
 }
 
-
-void SelectMenu::SelectMap(const std::string& s)
+void SelectMenu::Quit()
 {
-	if (s == "Random map") {
-		userMap = showList->items[1 + gu->usRandInt() % (showList->items.size() - 1)];
+	globalQuit = true;
+}
+
+void SelectMenu::ShowConnectWindow(bool show)
+{
+	if (show && !conWindow)
+	{
+		conWindow = new ConnectWindow();
+		conWindow->Connect.connect(boost::bind(&SelectMenu::DirectConnect, this, _1));
+		conWindow->WantClose.connect(boost::bind(&SelectMenu::ShowConnectWindow, this, false));
 	}
-	else
-		userMap = s;
+	else if (!show && conWindow)
+	{
+		agui::gui->RmElement(conWindow);
+		conWindow = NULL;
+	}
+}
 
-	delete showList;
-	showList = NULL;
-
-	int gamemode = 3;
-	if (userScript.find("GlobalAI test") != std::string::npos)
-		gamemode = 0;
-	else
-		logOutput.Print("Testing mode enabled; game over disabled.\n");
-
+void SelectMenu::DirectConnect(const std::string& addr)
+{
+	configHandler->SetString("address", addr);
+	mySettings->hostip = addr;
+	mySettings->isHost = false;
 	pregame = new CPreGame(mySettings);
-	pregame->LoadSetupscript(CreateDefaultSetup(userMap, userMod, userScript, mySettings->myPlayerName, gamemode));
-	delete this;
+	agui::gui->RmElement(this);
 }
 
-
-void SelectMenu::SelectScript(const std::string& s)
+bool SelectMenu::HandleEventSelf(const SDL_Event& ev)
 {
-	userScript = s;
-
-	delete showList;
-	showList = NULL;
-
-	ShowMapList();
-}
-
-
-void SelectMenu::SelectMod(const std::string& s)
-{
-	if (s == "Random mod") {
-		const int index = 1 + (gu->usRandInt() % (showList->items.size() - 1));
-		userMod = showList->items[index];
+	switch (ev.type) {
+		case SDL_KEYDOWN: {
+			if (ev.key.keysym.sym == SDLK_ESCAPE)
+			{
+				if(keys[SDLK_LSHIFT])
+				{
+					logOutput.Print("User exited");
+					globalQuit=true;
+				}
+				else
+				{
+					logOutput.Print("Use shift-esc to quit");
+				}
+			}
+			else if (ev.key.keysym.sym == SDLK_RETURN)
+			{
+				Single();
+				return true;
+			}
+			break;
+		}
 	}
-	else
-		userMod = s;
-
-	delete showList;
-	showList = NULL;
-
-	ShowScriptList();
+	return false;
 }
-

@@ -6,6 +6,7 @@
 #define PLAYERHANDLER_H
 
 #include <assert.h>
+#include <vector>
 
 #include "creg/creg_cond.h"
 #include "Player.h"
@@ -46,11 +47,19 @@ public:
 	void PlayerLeft(int playernum, unsigned char reason);
 
 	/**
-	 * @brief Nubmer of players the game was created for
+	 * @brief Number of players the game was created for
 	 * 
 	 * Constant at runtime
 	 */
 	int ActivePlayers() const { return players.size(); };
+
+	/**
+	 * @brief Number of players in a team
+	 * 
+	 * Will change during runtime (Connection lost, died, ...).
+	 * This excludes spectators and AIs.
+	 */
+	std::vector<int> ActivePlayersInTeam(int teamId) const;
 
 	void GameFrame(int frameNum);
 

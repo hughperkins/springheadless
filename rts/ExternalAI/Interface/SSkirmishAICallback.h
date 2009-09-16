@@ -407,6 +407,10 @@ bool (CALLING_CONV *Clb_UnitDef_isStrafeToAttack)(int teamId, int unitDefId);
 float (CALLING_CONV *Clb_UnitDef_getMinCollisionSpeed)(int teamId,
 		int unitDefId);
 float (CALLING_CONV *Clb_UnitDef_getSlideTolerance)(int teamId, int unitDefId);
+/**
+ * Build location relevant maximum steepness of the underlaying terrain.
+ * Used to calculate the maxHeightDif.
+ */
 float (CALLING_CONV *Clb_UnitDef_getMaxSlope)(int teamId, int unitDefId);
 /**
  * Maximum terra-form height this building allows.
@@ -1219,6 +1223,10 @@ int (CALLING_CONV *Clb_Map_0ARRAY1VALS0REF1Resource2resourceId0getResourceMapRaw
 		int teamId, int resourceId, unsigned char resources[], int resources_max);
 /**
  * Returns positions indicating where to place resource extractors on the map.
+ * Only the x and z values give the location of the spots, while the y values
+ * represents the actual amount of resource an extractor placed there can make.
+ * You should only compare the y values to each other, and not try to estimate
+ * effective output from spots.
  */
 int (CALLING_CONV *Clb_Map_0ARRAY1SIZE0REF1Resource2resourceId0getResourceMapSpotsPositions)(
 		int teamId, int resourceId);
@@ -1234,19 +1242,26 @@ float (CALLING_CONV *Clb_Map_0ARRAY1VALS0REF1Resource2resourceId0initResourceMap
  */
 struct SAIFloat3 (CALLING_CONV *Clb_Map_0ARRAY1VALS0REF1Resource2resourceId0initResourceMapSpotsNearest)(
 		int teamId, int resourceId, struct SAIFloat3 pos);
+
 const char* (CALLING_CONV *Clb_Map_getName)(int teamId);
 /// Gets the elevation of the map at position (x, z)
 float (CALLING_CONV *Clb_Map_getElevationAt)(int teamId, float x, float z);
+
+
 /// Returns what value 255 in the resource map is worth
 float (CALLING_CONV *Clb_Map_0REF1Resource2resourceId0getMaxResource)(
 		int teamId, int resourceId);
 /// Returns extraction radius for resource extractors
 float (CALLING_CONV *Clb_Map_0REF1Resource2resourceId0getExtractorRadius)(
 		int teamId, int resourceId);
+
 float (CALLING_CONV *Clb_Map_getMinWind)(int teamId);
 float (CALLING_CONV *Clb_Map_getMaxWind)(int teamId);
+float (CALLING_CONV *Clb_Map_getCurWind)(int teamId);
 float (CALLING_CONV *Clb_Map_getTidalStrength)(int teamId);
 float (CALLING_CONV *Clb_Map_getGravity)(int teamId);
+
+
 /**
  * Returns all points drawn with this AIs team color,
  * and additionally the ones drawn with allied team colors,

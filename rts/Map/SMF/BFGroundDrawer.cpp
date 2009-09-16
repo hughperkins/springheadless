@@ -133,6 +133,7 @@ CBFGroundDrawer::~CBFGroundDrawer(void)
 
 void CBFGroundDrawer::CreateWaterPlanes(const bool &camOufOfMap) {
 	glDisable(GL_TEXTURE_2D);
+	glDepthMask(GL_FALSE);
 
 	const float xsize = (gs->mapx * SQUARE_SIZE) >> 2;
 	const float ysize = (gs->mapy * SQUARE_SIZE) >> 2;
@@ -183,6 +184,8 @@ void CBFGroundDrawer::CreateWaterPlanes(const bool &camOufOfMap) {
 		}
 	}
 	va->DrawArrayC(GL_TRIANGLE_STRIP);
+
+	glDepthMask(GL_TRUE);
 }
 
 
@@ -211,7 +214,7 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 	//}
 
 	float zoom  = 45.0f / camera->GetFov();
-	viewRadius  = (int) (viewRadius * fastmath::sqrt(zoom));
+	viewRadius  = (int) (viewRadius * fastmath::apxsqrt(zoom));
 	viewRadius  = max(max(numBigTexY,numBigTexX), viewRadius);
 	viewRadius += (viewRadius & 1); //! we need a multiple of 2
 	neededLod   = int((gu->viewRange * 0.125f) / viewRadius) << 1;
@@ -220,11 +223,10 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 
 	glDisable(GL_BLEND);
 	glEnable(GL_TEXTURE_2D);
+	glCullFace(GL_BACK);
 
 	if (!overrideVP)
 		glEnable(GL_CULL_FACE);
-
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	SetupTextureUnits(drawWaterReflection);
 
@@ -237,8 +239,9 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 	if(multiThreadDrawGround) {
 		gmlProcessor->Work(NULL,&CBFGroundDrawer::DoDrawGroundRowMT,NULL,this,gmlThreadCount,FALSE,NULL,numBigTexY,50,100,TRUE,NULL);
 	}
-	else {
+	else
 #endif
+	{
 		int camBty = (int)math::floor(cam2->pos.z / (bigSquareSize * SQUARE_SIZE));
 		camBty = std::max(0,std::min(numBigTexY-1, camBty ));
 
@@ -252,9 +255,7 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 		}}else{
 			AdvDraw(0);
 		}
-#ifdef USE_GML
 	}
-#endif
 
 	ResetTextureUnits(drawWaterReflection);
 	glDisable(GL_CULL_FACE);
@@ -280,8 +281,6 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 	}
 
 //	sky->SetCloudShadow(1);
-//	if (drawWaterReflection)
-//		treeDistance *= 0.5f;
 
 	viewRadius = baseViewRadius;
 	overrideVP = NULL;
@@ -637,14 +636,13 @@ void CBFGroundDrawer::DrawShadowPass(void)
 	if(multiThreadDrawGroundShadow) {
 		gmlProcessor->Work(NULL,&CBFGroundDrawer::DoDrawGroundShadowLODMT,NULL,this,gmlThreadCount,FALSE,NULL,NUM_LODS+1,50,100,TRUE,NULL);
 	}
-	else {
+	else
 #endif
+	{
 		for (int nlod = 0; nlod < NUM_LODS+1; ++nlod) {
 			DoDrawGroundShadowLOD(nlod);
 		}
-#ifdef USE_GML
 	}
-#endif
 
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	glDisable(GL_CULL_FACE);
@@ -689,11 +687,11 @@ void CBFGroundDrawer::SetupTextureUnits(bool drawReflection)
 			glMultiTexCoord1f(GL_TEXTURE2_ARB,0); //fixes a nvidia bug with gltexgen
 			glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_ARB, GL_ADD_SIGNED_ARB);
 			//SetTexGen(0.02f,0.02f, -floor(camera->pos.x * 0.02f), -floor(camera->pos.z * 0.02f));
-			GLfloat plan[]={0.02f,0.5f,0,0};
+			GLfloat plan[]={0.02f,0,0,0};
 			glTexGeni(GL_S,GL_TEXTURE_GEN_MODE,GL_OBJECT_LINEAR);
 			glTexGenfv(GL_S,GL_EYE_PLANE,plan);
 			glEnable(GL_TEXTURE_GEN_S);
-			GLfloat plan2[]={0,0.5f,0.02f,0};
+			GLfloat plan2[]={0,0,0.02f,0};
 			glTexGeni(GL_T,GL_TEXTURE_GEN_MODE,GL_OBJECT_LINEAR);
 			glTexGenfv(GL_T,GL_EYE_PLANE,plan2);
 			glEnable(GL_TEXTURE_GEN_T);
@@ -862,10 +860,9 @@ void CBFGroundDrawer::ResetTextureUnits(bool drawReflection)
 void CBFGroundDrawer::AddFrustumRestraint(const float3& side)
 {
 	fline temp;
-	static const float3 up(0, 1, 0);
 
 	// get vector for collision between frustum and horizontal plane
-	float3 b = up.cross(side);
+	float3 b = UpVector.cross(side);
 
 	if (fabs(b.z) < 0.0001f)
 		b.z = 0.0001f;
@@ -905,13 +902,14 @@ void CBFGroundDrawer::UpdateCamRestraints(void)
 
 	// add restraint for maximum view distance
 	fline temp;
-	static const float3 up(0, 1, 0);
 	float3 side = cam2->forward;
 	float3 camHorizontal = cam2->forward;
 	camHorizontal.y = 0;
+	if (camHorizontal.x == 0 && camHorizontal.z == 0)
+		return;
 	camHorizontal.ANormalize();
 	// get vector for collision between frustum and horizontal plane
-	float3 b = up.cross(camHorizontal);
+	float3 b = UpVector.cross(camHorizontal);
 
 	if (fabs(b.z) > 0.0001f) {
 		temp.dir = b.x / b.z;               // set direction to that

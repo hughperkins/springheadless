@@ -696,7 +696,7 @@ void CAirMoveType::UpdateFlying(float wantedHeight, float engine)
 	goalDir /= goalLength;
 
 	float3 adjustedGoalDir = float3(goalPos.x, 0, goalPos.z) - float3(pos.x, 0, pos.z);
-	adjustedGoalDir.ANormalize();
+	adjustedGoalDir.SafeANormalize();
 
 	float aileron = 0.0f;
 	float rudder = 0.0f;

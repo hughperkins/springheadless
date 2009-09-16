@@ -72,41 +72,45 @@ void UDPListener::Update()
 	{
 		std::vector<uint8_t> buffer(bytes_avail);
 		ip::udp::endpoint sender_endpoint;
-		size_t bytesReceived = mySocket->receive_from(boost::asio::buffer(buffer), sender_endpoint);
+		boost::asio::ip::udp::socket::message_flags flags = 0;
+		boost::system::error_code err;
+		size_t bytesReceived = mySocket->receive_from(boost::asio::buffer(buffer), sender_endpoint, flags, err);
+		if (CheckErrorCode(err))
+			break;
 
-		if (bytesReceived < UDPConnection::hsize)
+		if (bytesReceived < Packet::headerSize)
 			continue;
 
-		RawPacket* data = new RawPacket(&buffer[0], bytesReceived);
+		Packet data(&buffer[0], buffer.size());
 
+		bool processed = false;
 		for (std::list< boost::weak_ptr<UDPConnection> >::iterator i = conn.begin(); i != conn.end(); ++i)
 		{
 			boost::shared_ptr<UDPConnection> locked(*i);
 			if (locked->CheckAddress(sender_endpoint))
 			{
 				locked->ProcessRawPacket(data);
-				data = 0; // UDPConnection takes ownership of packet
+				processed = true;
 				break;
 			}
 		}
 		
-		if (data) // still have the packet (means no connection with the sender's address found)
+		if (!processed) // still have the packet (means no connection with the sender's address found)
 		{
-			const int packetNumber = *(int*)(data->data);
-			const int lastInOrder = *(int*)(data->data+4);
-			const unsigned char nak = data->data[8];
-			if (acceptNewConnections && packetNumber == 0 && lastInOrder == -1 && nak == 0)
+			if (acceptNewConnections && data.lastContinuous == -1 && data.nakType == 0)
 			{
-				// new client wants to connect
-				boost::shared_ptr<UDPConnection> incoming(new UDPConnection(mySocket, sender_endpoint));
-				waiting.push(incoming);
-				conn.push_back(incoming);
-				incoming->ProcessRawPacket(data);
+				if (!data.chunks.empty() && (*data.chunks.begin())->chunkNumber == 0)
+				{
+					// new client wants to connect
+					boost::shared_ptr<UDPConnection> incoming(new UDPConnection(mySocket, sender_endpoint));
+					waiting.push(incoming);
+					conn.push_back(incoming);
+					incoming->ProcessRawPacket(data);
+				}
 			}
 			else
 			{
 				// throw it
-				delete data;
 			}
 		}	
 	}

@@ -14,6 +14,7 @@
 #include "SoundBuffer.h"
 #include "SoundItem.h"
 #include "AudioChannel.h"
+#include "Music.h"
 #include "ALShared.h"
 #include "Music.h"
 
@@ -40,7 +41,7 @@ CSound::CSound() : prevVelocity(0.0, 0.0, 0.0), numEmptyPlayRequests(0), soundTh
 	Channels::UnitReply.SetMaxEmmits(1);
 	Channels::Battle.SetVolume(configHandler->Get("snd_volbattle", 100 ) * 0.01f);
 	Channels::UserInterface.SetVolume(configHandler->Get("snd_volui", 100 ) * 0.01f);
-	Channels::UserInterface.SetVolume(configHandler->Get("snd_volmusic", 100 ) * 0.01f);
+	Channels::BGMusic.SetVolume(configHandler->Get("snd_volmusic", 100 ) * 0.01f);
 
 	if (maxSounds <= 0)
 	{
@@ -167,10 +168,15 @@ size_t CSound::GetSoundId(const std::string& name, bool hardFail)
 		soundItemDefMap::iterator itemDefIt = soundItemDefs.find(name);
 		if (itemDefIt != soundItemDefs.end())
 		{
-			//logOutput.Print("CSound::GetSoundId: %s points to %s", name.c_str(), it->second.c_str());
-			sounds.push_back(new SoundItem(GetWaveBuffer(itemDefIt->second["file"], hardFail), itemDefIt->second));
-			soundMap[name] = newid;
-			return newid;
+			boost::shared_ptr<SoundBuffer> buffer = GetWaveBuffer(itemDefIt->second["file"], hardFail);
+			if (buffer)
+			{
+				sounds.push_back(new SoundItem(buffer, itemDefIt->second));
+				soundMap[name] = newid;
+				return newid;
+			}
+			else
+				return 0;
 		}
 		else
 		{
@@ -200,6 +206,8 @@ size_t CSound::GetSoundId(const std::string& name, bool hardFail)
 
 SoundSource* CSound::GetNextBestSource(bool lock)
 {
+	if (sources.empty())
+		return NULL;
 	sourceVecT::iterator bestPos = sources.begin();
 	
 	for (sourceVecT::iterator it = sources.begin(); it != sources.end(); ++it)
@@ -312,7 +320,7 @@ void CSound::PlaySample(size_t id, const float3& p, const float3& velocity, floa
 	}
 
 	SoundSource* best = GetNextBestSource(false);
-	if (!best->IsPlaying() || (best->GetCurrentPriority() <= 0 && best->GetCurrentPriority() < sounds[id].GetPriority()))
+	if (best && (!best->IsPlaying() || (best->GetCurrentPriority() <= 0 && best->GetCurrentPriority() < sounds[id].GetPriority())))
 		best->Play(&sounds[id], p, velocity, volume, relative);
 	CheckError("CSound::PlaySample");
 }
@@ -461,11 +469,18 @@ bool CSound::LoadSoundDefs(const std::string& filename)
 				{
 					LogObject(LOG_SOUND) << "CSound(): preloading " << name;
 					const size_t newid = sounds.size();
-					sounds.push_back(new SoundItem(GetWaveBuffer(bufmap["file"], true), bufmap));
-					soundMap[name] = newid;
+					boost::shared_ptr<SoundBuffer> buffer = GetWaveBuffer(bufmap["file"], true);
+					if (buffer)
+					{
+						sounds.push_back(new SoundItem(buffer, bufmap));
+						soundMap[name] = newid;
+						return newid;
+					}
+					else
+						return 0;
 				}
 			}
-			LogObject(LOG_SOUND) << "CSound(): Sucessfully parsed " << keys.size() << " SoundItems from " << filename;
+			LogObject(LOG_SOUND) << "CSound(): Successfully parsed " << keys.size() << " SoundItems from " << filename;
 		}
 	}
 	return true;

@@ -70,7 +70,7 @@ public:
 	void UnitCreated(const CUnit& unit, const CUnit* builder);
 	void UnitFinished(const CUnit& unit);
 	void UnitDestroyed(const CUnit& destroyed, const CUnit* attacker);
-	void UnitDamaged(const CUnit& damaged, const CUnit* attacker, float damage);
+	void UnitDamaged(const CUnit& damaged, const CUnit* attacker, float damage, int weaponId, bool paralyzer);
 	void UnitMoveFailed(const CUnit& unit);
 	void UnitCaptured(const CUnit& unit, int newTeamId);
 	void UnitGiven(const CUnit& unit, int oldTeamId);
@@ -87,11 +87,15 @@ public:
 
 
 	// Skirmish AI stuff
-	bool CreateSkirmishAI(int teamId, const SkirmishAIKey& key);
-	const SkirmishAIKey* GetSkirmishAIKey(int teamId) const;
-	bool IsSkirmishAI(int teamId) const;
-	const SSkirmishAICallback* GetSkirmishAICallback(int teamId) const;
-	void DestroySkirmishAI(int teamId);
+	void CreateSkirmishAI(const size_t skirmishAIId);
+	/**
+	 * Destructs a local Skirmish AI for real.
+	 * Do not cal this if you want to kill a local AI, but use
+	 * the Skirmish AI Handler instead.
+	 * @param skirmishAIId index of the AI to destroy
+	 * @see CSkirmishAIHandler::SetSkirmishAIDieing()
+	 */
+	void DestroySkirmishAI(const size_t skirmishAIId);
 
 
 	void SetCheating(bool enable);
@@ -106,11 +110,19 @@ private:
 	static CEngineOutHandler* singleton;
 
 private:
-	const unsigned int activeTeams;
+	typedef std::vector<size_t> ids_t;
+	typedef std::vector<CSkirmishAIWrapper*> ais_t;
 
-	static const size_t skirmishAIs_size = MAX_TEAMS;
-	CSkirmishAIWrapper* skirmishAIs[skirmishAIs_size];
-	bool hasSkirmishAIs;
+	typedef std::map<size_t, CSkirmishAIWrapper*> id_ai_t;
+	/// Contains all local Skirmish AIs, indexed by their ID
+	id_ai_t id_skirmishAI;
+
+	typedef std::map<int, ids_t> team_ais_t;
+	/**
+	 * Array mapping team IDs to local Skirmish AI instances.
+	 * There can be multiple Skirmish AIs per team.
+	 */
+	team_ais_t team_skirmishAIs;
 };
 
 #define eoh CEngineOutHandler::GetInstance()
