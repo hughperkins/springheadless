@@ -71,8 +71,7 @@ static float GetLODFloat(const string& name, float def)
 
 
 CUnitDrawer::CUnitDrawer(void)
-	: updateFace(0),
-	showHealthBars(true)
+	: updateFace(0)
 {
 	if (texturehandler3DO == 0) {
 		texturehandler3DO = new C3DOTextureHandler;
@@ -183,6 +182,8 @@ CUnitDrawer::CUnitDrawer(void)
 			advFade = false;
 		}
 	}
+
+	showHealthBars = !!configHandler->Get("ShowHealthBars", 1);
 
 #ifdef USE_GML
 	multiThreadDrawUnit=configHandler->Get("MultiThreadDrawUnit", 1);
@@ -417,7 +418,7 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 				// add it to the vector of cloaked units
 				const float sqDist = (unit->pos-camera->pos).SqLength();
 
-				if (DrawAsIcon(*unit, sqDist)) {
+				if (!DrawAsIcon(*unit, sqDist)) {
 					S3DModel* model = unit->model;
 					if (unit->unitDef->decoyDef) {
 						model = unit->unitDef->decoyDef->LoadModel();
@@ -452,8 +453,10 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 	drawStat.clear();
 
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
-	glEnable(GL_FOG);
+	if(gu->drawFog) {
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+		glEnable(GL_FOG);
+	}
 
 	drawIcon.clear();
 	drawRadarIcon.clear();
@@ -526,8 +529,11 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 	glEnable(GL_ALPHA_TEST);
 	glBindTexture(GL_TEXTURE_2D, fartextureHandler->GetTextureID());
 	glColor3f(1, 1, 1);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
-	glEnable(GL_FOG);
+
+	if(gu->drawFog) {
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+		glEnable(GL_FOG);
+	}
 
 	va = GetVertexArray();
 	va->Initialize();
@@ -2176,4 +2182,22 @@ bool CUnitDrawer::DrawAsIcon(const CUnit& unit, const float sqUnitCamDist) const
 	}
 
 	return asIcon;
+}
+
+
+void CUnitDrawer::BackupUnits()
+{
+	GML_RECMUTEX_LOCK(unit); // BackupUnits
+
+	drawCloakedSave = drawCloaked;
+	drawCloakedS3OSave = drawCloakedS3O;
+}
+
+
+void CUnitDrawer::RestoreUnits()
+{
+	GML_RECMUTEX_LOCK(unit); // RestoreUnits
+
+	drawCloaked = drawCloakedSave;
+	drawCloakedS3O = drawCloakedS3OSave;
 }

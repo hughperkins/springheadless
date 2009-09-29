@@ -34,7 +34,9 @@ public:
 
 	int AddFeature(CFeature* feature);
 	void DeleteFeature(CFeature* feature);
-	void UpdateDrawQuad(CFeature* feature, const float3& newPos);
+	void UpdateDrawQuad(CFeature* feature);
+	void UpdateDraw();
+	void UpdateDrawPos(CFeature* feature);
 
 	void LoadFeaturesFromMap(bool onlyCreateDefs);
 	const FeatureDef* GetFeatureDef(const std::string name, const bool showError = true);
@@ -52,12 +54,17 @@ public:
 
 	void DrawFadeFeatures(bool submerged, bool noAdvShading = false);
 
+	void BackupFeatures();
+	void RestoreFeatures();
+
+	bool showRezBars;
+
+private:
 	std::set<CFeature *> fadeFeatures;
 	std::set<CFeature *> fadeFeaturesS3O;
 	std::set<CFeature *> fadeFeaturesSave;
 	std::set<CFeature *> fadeFeaturesS3OSave;
 
-private:
 	void AddFeatureDef(const std::string& name, FeatureDef* feature);
 	void CreateFeatureDef(const LuaTable& luaTable, const std::string& name);
 
@@ -72,6 +79,7 @@ private:
 
 	std::list<int> toBeRemoved;
 	CFeatureSet updateFeatures;
+	std::set<CFeature *> updateDrawFeatures;
 
 	struct DrawQuad {
 		CR_DECLARE_STRUCT(DrawQuad);
@@ -86,8 +94,10 @@ private:
 	float farDist;
 
 	std::vector<CFeature*> drawFar;
+	std::vector<CFeature*> drawStat;
 
 	void DrawFar(CFeature* feature, CVertexArray* va);
+	void DrawFeatureStats(CFeature* feature);
 
 	void Serialize(creg::ISerializer *s);
 	void PostLoad();

@@ -19,6 +19,7 @@
 #include "GameData.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/GlobalConstants.h"
+#include "ExternalAI/SkirmishAIHandler.h"
 #include "NetProtocol.h"
 #include "Net/RawPacket.h"
 #include "DemoRecorder.h"
@@ -133,7 +134,7 @@ bool CPreGame::Draw()
 
 	font->glFormat(0.60f, 0.40f, 1.0f, FONT_SCALE | FONT_NORM, "Connecting to:   %s", net->ConnectionStr().c_str());
 
-	font->glFormat(0.60f, 0.35f, 1.0f, FONT_SCALE | FONT_NORM, "Using playername: %s", settings->myPlayerName.c_str());
+	font->glFormat(0.60f, 0.35f, 1.0f, FONT_SCALE | FONT_NORM, "User name: %s", settings->myPlayerName.c_str());
 
 	// credits
 	font->glFormat(0.5f,0.06f,1.0f,FONT_CENTER | FONT_SCALE | FONT_NORM, "Spring %s", SpringVersion::GetFull().c_str());
@@ -236,7 +237,7 @@ void CPreGame::UpdateClientNet()
 			}
 			case NETMSG_SETPLAYERNUM: { // this is sent afterwards to let us know which playernum we have
 				gu->SetMyPlayer(packet->data[1]);
-				logOutput.Print("Became player %i (team %i, allyteam %i)", gu->myPlayerNum, gu->myTeam, gu->myAllyTeam);
+				logOutput.Print("User number %i (team %i, allyteam %i)", gu->myPlayerNum, gu->myTeam, gu->myAllyTeam);
 
 				const CTeam* team = teamHandler->Team(gu->myTeam);
 				assert(team);
@@ -396,6 +397,8 @@ void CPreGame::LoadMod(const std::string& modName)
 			}
 		}
 		alreadyLoaded = true;
+		// This loads the Lua AIs from the mod archives LuaAI.lua
+		skirmishAIHandler.LoadPreGame();
 	}
 }
 

@@ -19,7 +19,7 @@
 #include "LuaPathFinder.h"
 #include "LuaRules.h"
 #include "LuaUtils.h"
-#include "ExternalAI/EngineOutHandler.h"
+#include "ExternalAI/SkirmishAIHandler.h"
 #include "Game/Game.h"
 #include "Game/GameSetup.h"
 #include "Game/Camera.h"
@@ -1038,15 +1038,12 @@ int LuaSyncedRead::GetTeamInfo(lua_State* L)
 		return 0;
 	}
 
-	bool isAiTeam = false;
-	if (!team->luaAI.empty() || team->isAI) {
-		isAiTeam = true;
-	}
+	const bool hasAIs = (skirmishAIHandler.GetSkirmishAIsInTeam(teamID).size() > 0);
 
 	lua_pushnumber(L,  team->teamNum);
 	lua_pushnumber(L,  team->leader);
 	lua_pushboolean(L, team->isDead);
-	lua_pushboolean(L, isAiTeam);
+	lua_pushboolean(L, hasAIs);
 	lua_pushstring(L,  team->side.c_str());
 	lua_pushnumber(L,  teamHandler->AllyTeam(team->teamNum));
 
@@ -1240,7 +1237,16 @@ int LuaSyncedRead::GetTeamLuaAI(lua_State* L)
 	if (team == NULL) {
 		return 0;
 	}
-	lua_pushstring(L, team->luaAI.c_str());
+
+	std::string luaAIName = "";
+	CSkirmishAIHandler::ids_t saids = skirmishAIHandler.GetSkirmishAIsInTeam(team->teamNum);
+	for (CSkirmishAIHandler::ids_t::const_iterator ai = saids.begin(); ai != saids.end(); ++ai) {
+		const SkirmishAIData* aiData = skirmishAIHandler.GetSkirmishAI(*ai);
+		if (aiData->isLuaAI) {
+			luaAIName = aiData->shortName;
+		}
+	}
+	lua_pushstring(L, luaAIName.c_str());
 	return 1;
 }
 
@@ -1318,34 +1324,44 @@ int LuaSyncedRead::GetAIInfo(lua_State* L)
 	int numVals = 0;
 
 	const int teamId = luaL_checkint(L, 1);
-	if (!teamHandler->IsValidTeam(teamId) || !eoh->IsSkirmishAI(teamId)) {
+	if (!teamHandler->IsValidTeam(teamId)) {
 		return numVals;
 	}
 
-	const SkirmishAIData* aiData = eoh->GetSkirmishAIData(teamId);
-	if (aiData == NULL) {
+	CSkirmishAIHandler::ids_t saids = skirmishAIHandler.GetSkirmishAIsInTeam(teamId);
+	if (saids.size() == 0) {
 		return numVals;
 	}
+	const size_t skirmishAIId    = *(saids.begin());
+	const SkirmishAIData* aiData = skirmishAIHandler.GetSkirmishAI(skirmishAIId);
+	const bool isLocal           = skirmishAIHandler.IsLocalSkirmishAI(skirmishAIId);
 
 	// no ai info for synchronized scripts
 	if (CLuaHandle::GetActiveHandle()->GetSynced()) {
 		HSTR_PUSH(L, "SYNCED_NONAME");
 		numVals++;
 	} else {
+		lua_pushnumber(L, skirmishAIId);
 		lua_pushstring(L, aiData->name.c_str());
-		lua_pushstring(L, aiData->shortName.c_str());
-		lua_pushstring(L, aiData->version.c_str());
-		numVals += 3;
+		lua_pushnumber(L, aiData->hostPlayer);
+		lua_pushnumber(L, isLocal);
+		numVals += 4;
 	}
 
-	lua_newtable(L);
-	std::map<std::string, std::string>::const_iterator o;
-	for (o = aiData->options.begin(); o != aiData->options.end(); ++o) {
-		lua_pushstring(L, o->first.c_str());
-		lua_pushstring(L, o->second.c_str());
-		lua_rawset(L, -3);
+	if (isLocal) {
+		lua_pushstring(L, aiData->shortName.c_str());
+		lua_pushstring(L, aiData->version.c_str());
+		numVals += 2;
+
+		lua_newtable(L);
+		std::map<std::string, std::string>::const_iterator o;
+		for (o = aiData->options.begin(); o != aiData->options.end(); ++o) {
+			lua_pushstring(L, o->first.c_str());
+			lua_pushstring(L, o->second.c_str());
+			lua_rawset(L, -3);
+		}
+		numVals++;
 	}
-	numVals++;
 
 	return numVals;
 }
@@ -2432,7 +2448,8 @@ int LuaSyncedRead::GetUnitTooltip(lua_State* L)
 	const UnitDef* effectiveDef = EffectiveUnitDef(unit);
 	if (effectiveDef->showPlayerName) {
 		tooltip = playerHandler->Player(teamHandler->Team(unit->team)->leader)->name;
-		if (teamHandler->Team(unit->team)->isAI) {
+		CSkirmishAIHandler::ids_t saids = skirmishAIHandler.GetSkirmishAIsInTeam(unit->team);
+		if (saids.size() > 0) {
 			tooltip = std::string("AI@") + tooltip;
 		}
 	} else {
@@ -4220,28 +4237,6 @@ int LuaSyncedRead::GetGroundExtremes(lua_State* L)
 /******************************************************************************/
 /******************************************************************************/
 
-static int ParseFacing(lua_State* L, const char* caller, int index)
-{
-	// FIXME -- duplicate in LuaSyncedCtrl.cpp
-	if (lua_israwnumber(L, index)) {
-		return max(0, min(3, lua_toint(L, index)));
-	}
-	else if (lua_israwstring(L, index)) {
-		const string dir = StringToLower(lua_tostring(L, index));
-		if (dir == "s") { return 0; }
-		if (dir == "e") { return 1; }
-		if (dir == "n") { return 2; }
-		if (dir == "w") { return 3; }
-		if (dir == "south") { return 0; }
-		if (dir == "east")  { return 1; }
-		if (dir == "north") { return 2; }
-		if (dir == "west")  { return 3; }
-		luaL_error(L, "%s(): bad facing string", caller);
-	}
-	luaL_error(L, "%s(): bad facing parameter", caller);
-	return 0;
-}
-
 
 int LuaSyncedRead::TestBuildOrder(lua_State* L)
 {
@@ -4259,7 +4254,7 @@ int LuaSyncedRead::TestBuildOrder(lua_State* L)
 	const float3 pos(luaL_checkfloat(L, 2),
 	                 luaL_checkfloat(L, 3),
 	                 luaL_checkfloat(L, 4));
-	const int facing = ParseFacing(L, __FUNCTION__, 5);
+	const int facing = LuaUtils::ParseFacing(L, __FUNCTION__, 5);
 
 	BuildInfo bi;
 	bi.buildFacing = facing;

@@ -13,6 +13,9 @@ struct lua_State;
 class CLuaUnitScript : public CUnitScript, CUnitScript::IAnimListener
 {
 private:
+	static CUnit* activeUnit;
+	static CUnitScript* activeScript;
+
 	// remember whether we are running in LuaRules or LuaGaia
 	CLuaHandle* handle;
 
@@ -42,9 +45,11 @@ protected:
 	bool PopBoolean(int fn, bool def);
 
 	int  RunQueryCallIn(int fn);
+	int  RunQueryCallIn(int fn, float arg1);
 	void Call(int fn) { RawCall(scriptIndex[fn]); }
 	void Call(int fn, float arg1);
 	void Call(int fn, float arg1, float arg2);
+	void Call(int fn, float arg1, float arg2, float arg3);
 
 	void RawPushFunction(int functionId);
 	void PushFunction(int id);
@@ -69,8 +74,7 @@ public:
 	virtual void WindChanged(float heading, float speed);
 	virtual void ExtractionRateChanged(float speed);
 	virtual void RockUnit(const float3& rockDir);
-	virtual void HitByWeapon(const float3& hitDir);
-	virtual void HitByWeaponId(const float3& hitDir, int weaponDefId, float& inout_damage);
+	virtual void HitByWeapon(const float3& hitDir, int weaponDefId, float& inout_damage);
 	virtual void SetSFXOccupy(int curTerrainType);
 	virtual void QueryLandingPads(std::vector<int>& out_pieces);
 	virtual void BeginTransport(const CUnit* unit);
@@ -116,9 +120,16 @@ private:
 	static int CreateScript(lua_State* L);
 	static int UpdateCallIn(lua_State* L);
 
+	// other call-outs are stateful
+	static int CallAsUnit(lua_State* L);
+
 	// Lua COB replacement support funcs (+SpawnCEG, PlaySoundFile, etc.)
+	static int GetUnitValue(lua_State* L, CUnitScript* script, int arg);
 	static int GetUnitValue(lua_State* L);
+	static int GetUnitCOBValue(lua_State* L); // backward compat
+	static int SetUnitValue(lua_State* L, CUnitScript* script, int arg);
 	static int SetUnitValue(lua_State* L);
+	static int SetUnitCOBValue(lua_State* L); // backward compat
 	static int SetPieceVisibility(lua_State* L);
 	static int EmitSfx(lua_State* L);       // TODO: better names?
 	static int AttachUnit(lua_State* L);

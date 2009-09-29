@@ -12,9 +12,6 @@
 // These are indices into an array of 'refs' (lua_ref / lua_unref)
 // maintained by each CLuaUnitScript.
 
-// All call-ins also get as first argument the unitID.
-// This is left out of the comments below for brevity.
-
 enum {
 	LUAFN_Destroy,              // ( ) -> nil
 	LUAFN_StartMoving,          // ( ) -> nil
@@ -25,13 +22,9 @@ enum {
 	LUAFN_WindChanged,          // ( heading, strength ) -> nil
 	LUAFN_ExtractionRateChanged,// ( newRate ) -> nil
 	LUAFN_RockUnit,             // ( rockDir_x, rockDir_z ) -> nil
-	LUAFN_HitByWeapon,          // ( hitDir_x, hitDir_z ) -> nil
-	LUAFN_MoveRate0,            // ( ) -> nil
-	LUAFN_MoveRate1,            // ( ) -> nil
-	LUAFN_MoveRate2,            // ( ) -> nil
-	LUAFN_MoveRate3,            // FIXME: unused (see CTAAirMoveType::UpdateMoveRate)
+	LUAFN_MoveRate,             // ( curMoveRate ) -> nil
 	LUAFN_SetSFXOccupy,         // ( curTerrainType ) -> nil
-	LUAFN_HitByWeaponId,        // ( hitDir_x, hitDir_z, weaponDefID, damage ) -> number newDamage
+	LUAFN_HitByWeapon,          // ( hitDir_x, hitDir_z, weaponDefID, damage ) -> number newDamage | nil
 	LUAFN_QueryLandingPads,     // ( ) -> table piecenums
 	LUAFN_Falling,              // ( ) -> nil
 	LUAFN_Landed,               // ( ) -> nil
@@ -47,19 +40,19 @@ enum {
 	LUAFN_QueryBuildInfo,       // ( ) -> number piece
 	LUAFN_MoveFinished,         // ( piece, axis ) -> nil
 	LUAFN_TurnFinished,         // ( piece, axis ) -> nil
-	LUAFN_Last,
 
-	// These are special (this set of functions is repeated MAX_WEAPONS_PER_UNIT times)
-	LUAFN_QueryPrimary = LUAFN_Last, // ( ) -> number piece
-	LUAFN_AimPrimary,                // ( heading - owner->heading,  pitch ) -> nil   (both args 0 for plasma repulser)
-	LUAFN_AimFromPrimary,            // ( ) -> number piece
-	LUAFN_FirePrimary,               // ( ) -> nil
-	LUAFN_EndBurst,                  // ( ) -> nil
-	LUAFN_Shot,                      // ( ) -> nil
-	LUAFN_BlockShot,                 // ( targetUnitID, haveUserTarget ) -> boolean
-	LUAFN_TargetWeight,              // ( targetUnitID ) -> number targetWeight
-	LUAFN_Weapon_Last,
-	LUAFN_Weapon_Funcs = LUAFN_Weapon_Last - LUAFN_Last,
+	// Weapon functions
+	LUAFN_QueryWeapon,   // ( ) -> number piece
+	LUAFN_AimWeapon,     // ( heading - owner->heading,  pitch ) -> nil
+	LUAFN_AimShield,     // ( ) -> nil
+	LUAFN_AimFromWeapon, // ( ) -> number piece
+	LUAFN_FireWeapon,    // ( ) -> nil
+	LUAFN_EndBurst,      // ( ) -> nil
+	LUAFN_Shot,          // ( ) -> nil
+	LUAFN_BlockShot,     // ( targetUnitID, haveUserTarget ) -> boolean
+	LUAFN_TargetWeight,  // ( targetUnitID ) -> number targetWeight
+
+	LUAFN_Last,
 };
 
 

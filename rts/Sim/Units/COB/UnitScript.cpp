@@ -70,7 +70,6 @@ CUnitScript::CUnitScript(CUnit* unit, const std::vector<LocalModelPiece*>& piece
 	: unit(unit)
 	, yardOpen(false)
 	, busy(false)
-	, hasHitByWeaponId(false)
 	, hasSetSFXOccupy(false)
 	, hasRockUnit(false)
 	, hasStartBuilding(false)
@@ -489,7 +488,7 @@ void CUnitScript::EmitSfx(int type, int piece)
 		case SFX_REVERSE_WAKE:
 		case SFX_REVERSE_WAKE_2: {  //reverse wake
 			//float3 relDir = -GetPieceDirection(piece) * 0.2f;
-			relDir *= 0.2f;
+			relDir *= -0.2f;
 			float3 dir = unit->frontdir * relDir.z + unit->updir * relDir.y + unit->rightdir * relDir.x;
 			new CWakeProjectile(pos+gu->usRandVector()*2,dir*0.4f,6+gu->usRandFloat()*4,0.15f+gu->usRandFloat()*0.3f,unit, alpha, alphaFalloff,fadeupTime);
 			break;
@@ -1417,18 +1416,18 @@ void CUnitScript::SetUnitVal(int val, int param)
 			break;
 		}
 		case YARD_OPEN: {
-			if (unit->yardMap != 0x0) {
+			if (unit->curYardMap != 0) {
 				// note: if this unit is a factory, engine-controlled
 				// OpenYard() and CloseYard() calls can interfere with
 				// the yardOpen state (they probably should be removed
 				// at some point)
 				if (param == 0) {
 					if (groundBlockingObjectMap->CanCloseYard(unit)) {
-						groundBlockingObjectMap->CloseBlockingYard(unit, unit->yardMap);
+						groundBlockingObjectMap->CloseBlockingYard(unit, unit->curYardMap);
 						yardOpen = false;
 					}
 				} else {
-					groundBlockingObjectMap->OpenBlockingYard(unit, unit->yardMap);
+					groundBlockingObjectMap->OpenBlockingYard(unit, unit->curYardMap);
 					yardOpen = true;
 				}
 			}
@@ -1606,39 +1605,27 @@ void CUnitScript::SetUnitVal(int val, int param)
 
 void CUnitScript::BenchmarkScript(CUnitScript* script)
 {
-	/*
-	FIXME
-
 	const int duration = 10000; // millisecs
-	const int fn = COBFN_QueryPrimary + COBFN_Weapon_Funcs * 0;
-	const string fname = CUnitScriptNames::GetScriptName(fn);
-
-	if (!script->HasFunction(fn)) {
-		logOutput.Print("Script does not have %s", fname.c_str());
-		return;
-	}
 
 	const unsigned start = SDL_GetTicks();
 	unsigned end = start;
 	int count = 0;
 
 	while ((end - start) < duration) {
-		script->QueryWeapon(0);
+		for (int i = 0; i < 10000; ++i) {
+			script->QueryWeapon(0);
+		}
 		++count;
 		end = SDL_GetTicks();
 	}
 
-	logOutput.Print("%s: %d calls in %u ms -> %d calls/second", fname.c_str(),
-	                count, end - start, count / (duration / 1000));
-	*/
+	logOutput.Print("%d0000 calls in %u ms -> %.0f calls/second",
+	                count, end - start, float(count) * (10000 / (duration / 1000)));
 }
 
 
 void CUnitScript::BenchmarkScript(const string& unitname)
 {
-	/*
-	FIXME
-
 	std::list<CUnit*>::iterator ui = uh->activeUnits.begin();
 	for (; ui != uh->activeUnits.end(); ++ui) {
 		CUnit* unit = *ui;
@@ -1647,7 +1634,6 @@ void CUnitScript::BenchmarkScript(const string& unitname)
 			return;
 		}
 	}
-	*/
 }
 
 #endif

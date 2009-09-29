@@ -63,6 +63,7 @@
 
 #include "COB/NullUnitScript.h"
 #include "COB/UnitScriptFactory.h"
+#include "COB/CobInstance.h" // for TAANG2RAD
 #include "CommandAI/AirCAI.h"
 #include "CommandAI/BuilderCAI.h"
 #include "CommandAI/CommandAI.h"
@@ -361,8 +362,6 @@ void CUnit::UnitInit(const UnitDef* def, int Team, const float3& position)
 
 void CUnit::ForcedMove(const float3& newPos)
 {
-	// hack to make mines not block ground
-	const bool blocking = !unitDef->canKamikaze || (unitDef->type == "Building" || unitDef->type == "Factory");
 	if (blocking) {
 		UnBlock();
 	}
@@ -951,14 +950,11 @@ void CUnit::DoWaterDamage()
 	}
 }
 
-void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& impulse, int weaponDefId)
+void CUnit::DoDamage(const DamageArray& damages, CUnit* attacker, const float3& impulse, int weaponDefId)
 {
 	if (isDead) {
 		return;
 	}
-
-	residualImpulse += impulse / mass;
-	moveType->ImpulseAdded();
 
 	float damage = damages[armorType];
 
@@ -968,7 +964,8 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 			if (flankingBonusMode) {
 				const float3 adir = (attacker->pos - pos).SafeNormalize(); // FIXME -- not the impulse direction?
 
-				if (flankingBonusMode == 1) {		// mode 1 = global coordinates, mobile
+				if (flankingBonusMode == 1) {
+					// mode 1 = global coordinates, mobile
 					flankingBonusDir += adir * flankingBonusMobility;
 					flankingBonusDir.Normalize();
 					flankingBonusMobility = 0.0f;
@@ -997,20 +994,21 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 	hitDir.y = 0.0f;
 	hitDir = -hitDir.SafeNormalize();
 
-	if (script->HasHitByWeaponId()) {
-		script->HitByWeaponId(hitDir, weaponDefId, /*inout*/ damage);
-	}
-	else {
-		script->HitByWeapon(hitDir);
-	}
+	script->HitByWeapon(hitDir, weaponDefId, /*inout*/ damage);
 
 	float experienceMod = expMultiplier;
 	const int paralyzeTime = damages.paralyzeDamageTime;
 	float newDamage = damage;
+	float impulseMult = 1.0f;
 
 	if (luaRules && luaRules->UnitPreDamaged(this, attacker, damage, weaponDefId,
-			!!damages.paralyzeDamageTime, &newDamage))
+			!!damages.paralyzeDamageTime, &newDamage, &impulseMult)) {
 		damage = newDamage;
+	}
+
+	residualImpulse += ((impulse * impulseMult) / mass);
+	moveType->ImpulseAdded();
+
 
 	if (paralyzeTime == 0) { // real damage
 		if (damage > 0.0f) {
@@ -1039,8 +1037,7 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 			if (damage > maxParaDmg) {
 				if (maxParaDmg > 0.0f) {
 					damage = maxParaDmg;
-				}
-				else {
+				} else {
 					damage = 0.0f;
 				}
 			}
@@ -1161,7 +1158,7 @@ CMatrix44f CUnit::GetTransformMatrix(const bool synced, const bool error) const
 	CTransportUnit *trans;
 
 	if (usingScriptMoveType ||
-	    (!beingBuilt && (physicalState == Flying) && unitDef->canmove)) {
+	    (!beingBuilt && (physicalState == CSolidObject::Flying) && unitDef->canmove)) {
 		// aircraft, skidding ground unit, or active ScriptMoveType
 		// note: (CAirMoveType) aircraft under construction should not
 		// use this matrix, or their nanoframes won't spin on pad
@@ -1562,32 +1559,28 @@ void CUnit::Init(const CUnit* builder)
 	// TODO: Improve this. There might be cases when this is not correct.
 	if (unitDef->movedata &&
 	    (unitDef->movedata->moveType == MoveData::Hover_Move)) {
-		physicalState = Hovering;
+		physicalState = CSolidObject::Hovering;
 	} else if (floatOnWater) {
-		physicalState = Floating;
+		physicalState = CSolidObject::Floating;
 	} else {
-		physicalState = OnGround;
+		physicalState = CSolidObject::OnGround;
 	}
 
-	// all units are set as ground-blocking by default,
-	// units that pretend to be "pseudo-buildings" (ie.
-	// hubs, etc) are flagged as immobile so that their
-	// positions are not considered valid for building
-	blocking = true;
+
+	// all units are blocking (ie. register on the blk-map
+	// when not flying) except mines, since their position
+	// would be given away otherwise by the PF, etc.
+	// note: this does mean that mines can be stacked (would
+	// need an extra yardmap character to prevent)
 	immobile = (unitDef->speed < 0.001f || !unitDef->canmove);
+	blocking = !(immobile && unitDef->canKamikaze);
 
-	// some torp launchers etc are exactly in the surface and should be considered uw anyway
-	if ((pos.y + model->height) < 0.0f) {
-		isUnderWater = true;
-	}
-
-	// semi hack to make mines not block ground
-	if (!unitDef->canKamikaze ||
-	    (unitDef->type == "Building") ||
-	    (unitDef->type == "Factory")) {
+	if (blocking) {
 		Block();
 	}
 
+
+	isUnderWater = ((pos.y + model->height) < 0.0f);
 	UpdateTerrainType();
 
 	Command c;
@@ -2057,10 +2050,10 @@ void CUnit::Deactivate()
 
 void CUnit::UpdateWind(float x, float z, float strength)
 {
-	const float heading = GetHeadingFromVectorF(-x, -z);
-	strength = std::min(strength, unitDef->windGenerator);
+	const float windHeading = ClampRad(GetHeadingFromVectorF(-x, -z) - heading * TAANG2RAD);
+	const float windStrength = std::min(strength, unitDef->windGenerator);
 
-	script->WindChanged(heading, strength);
+	script->WindChanged(windHeading, windStrength);
 }
 
 
@@ -2189,7 +2182,7 @@ void CUnit::PostLoad()
 	//HACK:Initializing after load
 	unitDef = unitDefHandler->GetUnitDefByName(unitDefName);
 
-	yardMap = unitDef->yardmaps[buildFacing];
+	curYardMap = unitDef->yardmaps[buildFacing];
 
 	model = unitDef->LoadModel();
 	SetRadius(model->radius);

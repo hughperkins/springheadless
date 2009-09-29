@@ -102,6 +102,8 @@ CFeatureHandler::CFeatureHandler() : nextFreeID(0)
 		const LuaTable fdTable = rootTable.SubTable(name);
 		CreateFeatureDef(fdTable, name);
 	}
+
+	showRezBars = !!configHandler->Get("ShowRezBars", 1);
 }
 
 
@@ -151,6 +153,23 @@ void CFeatureHandler::PostLoad()
 	for (CFeatureSet::const_iterator it = activeFeatures.begin(); it != activeFeatures.end(); ++it)
 		if ((*it)->drawQuad >= 0)
 			drawQuads[(*it)->drawQuad].features.insert(*it);
+}
+
+
+void CFeatureHandler::BackupFeatures()
+{
+	GML_RECMUTEX_LOCK(feat); // BackupFeatures
+
+	fadeFeaturesSave    = fadeFeatures;
+	fadeFeaturesS3OSave = fadeFeaturesS3O;
+}
+
+void CFeatureHandler::RestoreFeatures()
+{
+	GML_RECMUTEX_LOCK(feat); // RestoreFeatures
+
+	fadeFeatures    = fadeFeaturesSave;
+	fadeFeaturesS3O = fadeFeaturesS3OSave;
 }
 
 void CFeatureHandler::AddFeatureDef(const std::string& name, FeatureDef* fd)
@@ -364,8 +383,6 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 
 int CFeatureHandler::AddFeature(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // AddFeature
-
 	// FIXME -- randomize me, pretty please
 	//          (could be done in blocks, if (empty) { add 5000 freeIDs } ?)
 	if (freeIDs.empty()) {
@@ -378,11 +395,8 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 	SetFeatureUpdateable(feature);
 
 	if (feature->def->drawType == DRAWTYPE_MODEL) {
-		int quad = int(feature->pos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
-		           int(feature->pos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
-		DrawQuad* dq = &drawQuads[quad];
-		dq->features.insert(feature);
-		feature->drawQuad = quad;
+		feature->drawQuad = -1;
+		UpdateDrawPos(feature);
 	}
 
 	eventHandler.FeatureCreated(feature);
@@ -393,8 +407,6 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 
 void CFeatureHandler::DeleteFeature(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // DeleteFeature - maybe superfluous
-
 	toBeRemoved.push_back(feature->id);
 
 	eventHandler.FeatureDestroyed(feature);
@@ -464,9 +476,15 @@ void CFeatureHandler::Update()
 				toBeFreedIDs.push_back(feature->id);
 				activeFeatures.erase(feature);
 
-				if (feature->drawQuad >= 0) {
-					DrawQuad* dq = &drawQuads[feature->drawQuad];
-					dq->features.erase(feature);
+				{
+					GML_STDMUTEX_LOCK(rfeat); // Update
+
+					if (feature->drawQuad >= 0) {
+						DrawQuad* dq = &drawQuads[feature->drawQuad];
+						dq->features.erase(feature);
+					}
+
+					updateDrawFeatures.erase(feature);
 				}
 
 				if (feature->inUpdateQue) {
@@ -496,25 +514,39 @@ void CFeatureHandler::Update()
 }
 
 
-void CFeatureHandler::UpdateDrawQuad(CFeature* feature, const float3& newPos)
+void CFeatureHandler::UpdateDrawQuad(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // UpdateDrawQuad
-
 	const int oldDrawQuad = feature->drawQuad;
-	if (oldDrawQuad >= 0) {
+	if (oldDrawQuad >= -1) {
 		const int newDrawQuad =
-			int(newPos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
-			int(newPos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
+			int(feature->pos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
+			int(feature->pos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
 		if (oldDrawQuad != newDrawQuad) {
-			DrawQuad* oldDQ = &drawQuads[oldDrawQuad];
-			oldDQ->features.erase(feature);
-			DrawQuad* newDQ = &drawQuads[newDrawQuad];
-			newDQ->features.insert(feature);
+			if (oldDrawQuad >= 0)
+				drawQuads[oldDrawQuad].features.erase(feature);
+			drawQuads[newDrawQuad].features.insert(feature);
 			feature->drawQuad = newDrawQuad;
 		}
 	}
 }
 
+void CFeatureHandler::UpdateDraw()
+{
+	GML_STDMUTEX_LOCK(rfeat); // UpdateDraw
+
+	for(std::set<CFeature *>::iterator i=updateDrawFeatures.begin(); i!= updateDrawFeatures.end(); ++i) {
+		UpdateDrawQuad(*i);
+	}
+
+	updateDrawFeatures.clear();
+}
+
+void CFeatureHandler::UpdateDrawPos(CFeature* feature)
+{
+	GML_STDMUTEX_LOCK(rfeat); // UpdateDrawPos
+
+	updateDrawFeatures.insert(feature);
+}
 
 void CFeatureHandler::SetFeatureUpdateable(CFeature* feature)
 {
@@ -559,8 +591,10 @@ void CFeatureHandler::Draw()
 
 	GML_RECMUTEX_LOCK(feat); // Draw
 
-	glEnable(GL_FOG);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	if(gu->drawFog) {
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	}
 
 	unitDrawer->SetupForUnitDrawing();
 	unitDrawer->SetupFor3DO();
@@ -597,6 +631,16 @@ void CFeatureHandler::Draw()
 		glDisable(GL_ALPHA_TEST);
 	}
 
+	if(drawStat.size() > 0) {
+		if(!water->drawReflection) {
+			glDisable(GL_TEXTURE_2D);
+			glDisable(GL_ALPHA_TEST);
+			for (std::vector<CFeature *>::iterator fi = drawStat.begin(); fi != drawStat.end(); ++fi)
+				DrawFeatureStats(*fi);
+		}
+		drawStat.clear();
+	}
+
 	glDisable(GL_FOG);
 }
 
@@ -618,8 +662,10 @@ void CFeatureHandler::DrawFadeFeatures(bool submerged, bool noAdvShading)
 	glEnable(GL_ALPHA_TEST);
 	glAlphaFunc(GL_GREATER,0.5f);
 
-	glEnable(GL_FOG);
-	glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	if(gu->drawFog) {
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+	}
 
 	double plane[4]={0,submerged?-1:1,0,0};
 	glClipPlane(GL_CLIP_PLANE3, plane);
@@ -629,14 +675,15 @@ void CFeatureHandler::DrawFadeFeatures(bool submerged, bool noAdvShading)
 	{
 		GML_RECMUTEX_LOCK(feat); // DrawFadeFeatures
 
-		for(std::set<CFeature *>::iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
+		for(std::set<CFeature *>::const_iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
 			glColor4f(1,1,1,(*i)->tempalpha);
+			glAlphaFunc(GL_GREATER,(*i)->tempalpha/2.0f);
 			unitDrawer->DrawFeatureStatic(*i);
 		}
 
 		unitDrawer->CleanUp3DO();
 
-		for(std::set<CFeature *>::iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
+		for(std::set<CFeature *>::const_iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
 			float cols[]={1,1,1,(*i)->tempalpha};
 			glColor4fv(cols);
 			glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,cols);
@@ -702,6 +749,7 @@ public:
 	float sqFadeDistBegin;
 	float sqFadeDistEnd;
 	std::vector<CFeature*>* farFeatures;
+	std::vector<CFeature*>* statFeatures;
 };
 
 
@@ -734,6 +782,9 @@ void CFeatureDrawer::DrawQuad(int x, int y)
 
 			float sqDist = (f->pos - camera->pos).SqLength2D();
 			float farLength = f->sqRadius * unitDrawDist * unitDrawDist;
+
+			if(statFeatures && (f->reclaimLeft < 1.0f || f->resurrectProgress > 0.0f))
+				statFeatures->push_back(f);
 
 			if (sqDist < farLength) {
 				float sqFadeDistE;
@@ -785,6 +836,7 @@ void CFeatureHandler::DrawRaw(int extraSize, std::vector<CFeature*>* farFeatures
 	drawer.sqFadeDistEnd = featureDist * featureDist;
 	drawer.sqFadeDistBegin = 0.75f * 0.75f * featureDist * featureDist;
 	drawer.farFeatures = farFeatures;
+	drawer.statFeatures = showRezBars ? &drawStat : NULL;
 
 	readmap->GridVisibility(camera, DRAW_QUAD_SIZE, featureDist, &drawer, extraSize);
 }
@@ -809,4 +861,41 @@ void CFeatureHandler::DrawFar(CFeature* feature, CVertexArray* va)
 	va->AddVertexQTN(interPos+(curad+offset)+crrad,tx,ty+(1.0f/64.0f),unitDrawer->camNorm);
 	va->AddVertexQTN(interPos+(curad+offset)-crrad,tx+(1.0f/64.0f),ty+(1.0f/64.0f),unitDrawer->camNorm);
 	va->AddVertexQTN(interPos-(curad-offset)-crrad,tx+(1.0f/64.0f),ty,unitDrawer->camNorm);
+}
+
+
+
+
+void CFeatureHandler::DrawFeatureStats(CFeature* feature)
+{
+	float3 interPos = feature->midPos;
+	interPos.y += feature->model->height + 5.0f;
+
+	glPushMatrix();
+	glTranslatef(interPos.x, interPos.y, interPos.z);
+	glCallList(CCamera::billboardList);
+
+	float recl = feature->reclaimLeft;
+	float rezp = feature->resurrectProgress;
+
+	// black background for the bar
+	glColor3f(0.0f, 0.0f, 0.0f);
+	glRectf(-5.0f, 4.0f, +5.0f, 6.0f);
+
+	// rez/metalbar
+	float rmin = std::min(recl, rezp) * 10.0f;
+	if(rmin > 0.0f) {
+		glColor3f(1.0f, 0.0f, 1.0f);
+		glRectf(-5.0f, 4.0f, rmin - 5.0f, 6.0f);
+	}
+	if(recl > rezp) {
+		glColor3f(0.6f, 0.6f, 0.6f);
+		glRectf(rmin - 5.0f, 4.0f, recl * 10.0f - 5.0f, 6.0f);
+	}
+	if(recl < rezp) {
+		glColor3f(0.5f, 0.0f, 1.0f);
+		glRectf(rmin - 5.0f, 4.0f, rezp * 10.0f - 5.0f, 6.0f);
+	}
+
+	glPopMatrix();
 }
