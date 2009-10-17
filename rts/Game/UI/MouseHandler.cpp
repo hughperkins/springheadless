@@ -327,13 +327,8 @@ void CMouseHandler::MouseRelease(int x, int y, int button)
 	// (the latter is determined by the time the mouse was held down:
 	//  <= 0.3 s means a camera mode switch, > 0.3 s means a drag scroll)
 	if (button == SDL_BUTTON_MIDDLE) {
-		if (buttons[SDL_BUTTON_MIDDLE].time > (gu->gameTime - 0.3f)) {
-			if (keys[SDLK_LSHIFT] || keys[SDLK_LCTRL]) {
-				camHandler->ToggleState();
-			} else {
-				ToggleState();
-			}
-		}
+		if (buttons[SDL_BUTTON_MIDDLE].time > (gu->gameTime - 0.3f))
+			ToggleState();
 		return;
 	}
 
@@ -694,6 +689,7 @@ void CMouseHandler::ToggleState()
 	if (locked) {
 		locked = false;
 		ShowMouse();
+		mouseInput->SetPos(int2(lastx, lasty)); //! workarounds a mouse jump caused by the combination of SDL_WM_GrabInput (done in wsdl) + SDL_ShowCursor
 	} else {
 		locked = true;
 		HideMouse();

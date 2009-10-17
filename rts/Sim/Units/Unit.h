@@ -86,7 +86,7 @@ public:
 
 	void ChangeLos(int l, int airlos);
 	void ChangeSensorRadius(int* valuePtr, int newValue);
-	/// negative amount=reclaim, return= true -> build power was succesfully applied
+	/// negative amount=reclaim, return= true -> build power was successfully applied
 	bool AddBuildPower(float amount,CUnit* builder);
 	/// turn the unit on
 	void Activate();
@@ -148,6 +148,9 @@ public:
 
 	void SetLosStatus(int allyTeam, unsigned short newStatus);
 	unsigned short CalcLosStatus(int allyTeam);
+
+	void SlowUpdateCloak(bool);
+	void ScriptDecloak(bool);
 
 	enum ChangeType{
 		ChangeGiven,
@@ -469,6 +472,7 @@ public:
 	int curCloakTimeout;
 	///true if the unit is currently cloaked (has enough energy etc)
 	bool isCloaked;
+	bool oldCloak;
 	float decloakDistance;
 
 	int lastTerrainType;

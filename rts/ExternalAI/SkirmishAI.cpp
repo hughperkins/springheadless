@@ -28,22 +28,34 @@ CSkirmishAI::CSkirmishAI(int teamId, const SkirmishAIKey& key,
 		key(key),
 		timerName("SkirmishAI:" +
 		          key.GetShortName() + "-" + key.GetVersion() +
-		          ":" + IntToString(teamId))
+		          ":" + IntToString(teamId)),
+		dieing(false)
 {
 	SCOPED_TIMER(timerName.c_str());
 	library = IAILibraryManager::GetInstance()->FetchSkirmishAILibrary(key);
-	library->Init(teamId, c_callback);
+	initOk = library->Init(teamId, c_callback);
 }
 
 CSkirmishAI::~CSkirmishAI() {
 
 	SCOPED_TIMER(timerName.c_str());
-	library->Release(teamId);
+	if (initOk) {
+		library->Release(teamId);
+	}
 	IAILibraryManager::GetInstance()->ReleaseSkirmishAILibrary(key);
+}
+
+void CSkirmishAI::Dieing() {
+	dieing = true;
 }
 
 int CSkirmishAI::HandleEvent(int topic, const void* data) const {
 
 	SCOPED_TIMER(timerName.c_str());
-	return library->HandleEvent(teamId, topic, data);
+	if (!dieing) {
+		return library->HandleEvent(teamId, topic, data);
+	} else {
+		// to prevent log error spam, signal: OK
+		return 0;
+	}
 }

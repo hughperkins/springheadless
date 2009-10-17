@@ -230,10 +230,14 @@ static jmethodID java_getStaticMethodID(JNIEnv* env, jclass cls,
  *
  * It will consist of the following:
  * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/AIInterface.jar
+ * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jconfig/
+ * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jconfig/[*].jar
+ * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jscript/
+ * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jscript/[*].jar
  * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jlib/
  * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jlib/[*].jar
- * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/common/jlib/
- * {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/common/jlib/[*].jar
+ * TODO: {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/common/jlib/
+ * TODO: {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/common/jlib/[*].jar
  */
 static size_t java_createClassPath(char* classPathStr, const size_t classPathStr_sizeMax) {
 
@@ -256,7 +260,13 @@ static size_t java_createClassPath(char* classPathStr, const size_t classPathStr
 	char**              jarDirs = (char**) calloc(jarDirs_sizeMax, sizeof(char*));
 	size_t              jarDirs_size = 0;
 
-	// the main java libs dir (.../jlibs/)
+	// {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jconfig/
+	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2,
+			callback->DataDirs_getConfigDir(interfaceId), JAVA_CONFIG_DIR);
+	// {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jscript/
+	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2,
+			callback->DataDirs_getConfigDir(interfaceId), JAVA_SCRIPT_DIR);
+	// {spring-data-dir}/{AI_INTERFACES_DATA_DIR}/Java/{version}/jlib/
 	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2,
 			callback->DataDirs_getConfigDir(interfaceId), JAVA_LIBS_DIR);
 
@@ -265,7 +275,10 @@ static size_t java_createClassPath(char* classPathStr, const size_t classPathStr
 	for (jd=0; (jd < jarDirs_size) && (classPath_size < classPath_sizeMax); ++jd) {
 		if (util_fileExists(jarDirs[jd])) {
 			// add the dir directly
-			classPath[classPath_size++] = util_allocStrCpy(jarDirs[jd]);
+			// For this to work properly with URLClassPathHandler,
+			// we have to ensure there is a '/' at the end,
+			// for the class-path-part to be recognized as a directory.
+			classPath[classPath_size++] = util_allocStrCat(2, jarDirs[jd], "/");
 
 			// add the contained jars recursively
 			static const size_t jarFiles_sizeMax = 128;
@@ -347,6 +360,10 @@ static size_t java_createAIClassPath(const char* shortName, const char* version,
 	// if they do not want to put everything into a jar all the time
 	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDD, "SkirmishAI");
 
+	// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/{ai-version}/jconfig/
+	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDD, JAVA_CONFIG_DIR);
+	// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/{ai-version}/jscript/
+	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDD, JAVA_SCRIPT_DIR);
 	// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/{ai-version}/jlib/
 	jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDD, JAVA_LIBS_DIR);
 
@@ -356,13 +373,12 @@ static size_t java_createAIClassPath(const char* shortName, const char* version,
 			shortName, version,
 			SKIRMISH_AI_PROPERTY_DATA_DIR_COMMON);
 	if (skirmDDCommon != NULL) {
-		char* commonJLibsDir = util_allocStrCatFSPath(2, skirmDDCommon, JAVA_LIBS_DIR);
-		if (commonJLibsDir != NULL && util_fileExists(commonJLibsDir)) {
-			// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/common/jlib/
-			jarDirs[jarDirs_size++] = commonJLibsDir;
-		} else {
-			FREE(commonJLibsDir);
-		}
+		// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/common/jconfig/
+		jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDDCommon, JAVA_CONFIG_DIR);
+		// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/common/jscript/
+		jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDDCommon, JAVA_SCRIPT_DIR);
+		// {spring-data-dir}/{SKIRMISH_AI_DATA_DIR}/{ai-name}/common/jlib/
+		jarDirs[jarDirs_size++] = util_allocStrCatFSPath(2, skirmDDCommon, JAVA_LIBS_DIR);
 	}
 
 	// add the directly specified .jar files
@@ -378,7 +394,10 @@ static size_t java_createAIClassPath(const char* shortName, const char* version,
 	{
 		if (jarDirs[jd] != NULL && util_fileExists(jarDirs[jd])) {
 			// add the jar dir (for .class files)
-			classPathParts[classPathParts_size++] = util_allocStrCpy(jarDirs[jd]);
+			// For this to work properly with URLClassPathHandler,
+			// we have to ensure there is a '/' at the end,
+			// for the class-path-part to be recognized as a directory.
+			classPathParts[classPathParts_size++] = util_allocStrCat(2, jarDirs[jd], "/");
 
 			// add the jars in the dir
 			const size_t subJarFiles_sizeMax = classPathParts_sizeMax - classPathParts_size;
@@ -434,8 +453,7 @@ static jobject java_createAIClassLoader(JNIEnv* env,
 				shortName, version, cpp, str_fileUrl);
 		jstring jstr_fileUrl = (*env)->NewStringUTF(env, str_fileUrl);
 		if (checkException(env, "Failed creating Java String.")) { return NULL; }
-		jobject jurl_fileUrl =
-				(*env)->NewObject(env, g_cls_url, g_m_url_ctor, jstr_fileUrl);
+		jobject jurl_fileUrl = (*env)->NewObject(env, g_cls_url, g_m_url_ctor, jstr_fileUrl);
 		if (checkException(env, "Failed creating Java URL.")) { return NULL; }
 		(*env)->SetObjectArrayElement(env, o_cppURLs, cpp, jurl_fileUrl);
 		if (checkException(env, "Failed setting Java URL in array.")) { return NULL; }
@@ -816,35 +834,40 @@ static JNIEnv* java_getJNIEnv() {
 			goto end;
 		}
 
-		/*
-				// looking for existing JVMs is problematic,
-				// cause they could be initialized with other
-				// JVM-arguments then we need
-				simpleLog_log("looking for existing JVMs ...");
-				jsize numJVMsFound = 0;
+		// Looking for existing JVMs might be problematic,
+		// cause they could be initialized with other
+		// JVM-arguments then we need.
+		// But as we can not use DestroyJavaVM, cause it makes
+		// creating a new one for hte same process impossible
+		// (a (SUN?) JVM limitation), we have to do it this way,
+		// to support /aireload and /aicontrol for Java Skirmish AIs.
+		simpleLog_logL(SIMPLELOG_LEVEL_FINE, "looking for existing JVMs ...");
+		jsize numJVMsFound = 0;
 
-				// jint JNI_GetCreatedJavaVMs(JavaVM **vmBuf, jsize bufLen, jsize *nVMs);
-				// Returns all Java VMs that have been created.
-				// Pointers to VMs are written in the buffer vmBuf,
-				// in the order they are created.
-				// At most bufLen number of entries will be written.
-				// The total number of created VMs is returned in *nVMs.
-				// Returns NULL on success; a negative number on failure.
-				res = JNI_GetCreatedJavaVMs_f(&jvm, 1, &numJVMsFound);
-				if (res < 0) {
-					simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
-							"Can not look for Java VMs, error code: %i", res);
-					goto end;
-				}
-				simpleLog_log("number of existing JVMs: %i", numJVMsFound);
-		 */
-
-		simpleLog_logL(SIMPLELOG_LEVEL_FINE, "creating JVM...");
-		res = JNI_CreateJavaVM_f(&jvm, (void**) &env, &vm_args);
-		if (res != 0 || (*env)->ExceptionCheck(env)) {
+		// jint JNI_GetCreatedJavaVMs(JavaVM **vmBuf, jsize bufLen, jsize *nVMs);
+		// Returns all Java VMs that have been created.
+		// Pointers to VMs are written in the buffer vmBuf,
+		// in the order they were created.
+		static const int maxVmsToFind = 1;
+		res = JNI_GetCreatedJavaVMs_f(&jvm, maxVmsToFind, &numJVMsFound);
+		if (res != 0) {
+			jvm = NULL;
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
-					"Can not create Java VM, error code: %i", res);
+					"Failed fetching list of running JVMs, error code: %i", res);
 			goto end;
+		}
+		simpleLog_logL(SIMPLELOG_LEVEL_FINE, "number of existing JVMs: %i", numJVMsFound);
+
+		if (numJVMsFound > 0) {
+			simpleLog_logL(SIMPLELOG_LEVEL_FINE, "using an already running JVM.");
+		} else {
+			simpleLog_logL(SIMPLELOG_LEVEL_FINE, "creating JVM...");
+			res = JNI_CreateJavaVM_f(&jvm, (void**) &env, &vm_args);
+			if (res != 0 || (*env)->ExceptionCheck(env)) {
+				simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
+						"Can not create Java VM, error code: %i", res);
+				goto end;
+			}
 		}
 
 		// free the JavaVMInitArgs content
@@ -861,7 +884,7 @@ static JNIEnv* java_getJNIEnv() {
 				(*env)->ExceptionDescribe(env);
 			}
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
-					"Can't Attach jvm to current thread,"
+					"Could not attach JVM to current thread,"
 					" error code: %i", res);
 			goto end;
 		}
@@ -874,7 +897,9 @@ end:
 				(*env)->ExceptionDescribe(env);
 			}
 			if (jvm != NULL) {
-				res = (*jvm)->DestroyJavaVM(jvm);
+				// Never destroy the JVM, because it can not be created again
+				// for the same thread; would allways fail with return value -1
+				//res = (*jvm)->DestroyJavaVM(jvm);
 			}
 			g_jvm = NULL;
 			ret = NULL;
@@ -919,14 +944,20 @@ bool java_unloadJNIEnv() {
 			return false;
 		}
 
-		res = (*g_jvm)->DestroyJavaVM(g_jvm);
+		// Never destroy the JVM, because it can not be created again
+		// for the same thread; would allways fail with return value -1,
+		// which would be a problem when using the /aicontrol or /aireload
+		// commands on java AIs
+		/*res = (*g_jvm)->DestroyJavaVM(g_jvm);
 		if (res != 0) {
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
 					"JVM: Failed destroying, error code: %i", res);
 			return false;
 		} else {
+			simpleLog_logL(SIMPLELOG_LEVEL_NORMAL,
+					"JVM: Successfully destroyed");
 			g_jvm = NULL;
-		}
+		}*/
 		establishSpringEnv();
 	}
 
@@ -1009,13 +1040,14 @@ bool java_initStatic(int _interfaceId,
 		return false;
 	} else {
 		simpleLog_logL(SIMPLELOG_LEVEL_NORMAL,
-				"Successfully loaded the JVM at \"%s\".", jvmLibPath);
+				"Successfully loaded the JVM shared library at \"%s\".", jvmLibPath);
 
 		JNI_GetDefaultJavaVMInitArgs_f = (JNI_GetDefaultJavaVMInitArgs_t*)
 				sharedLib_findAddress(jvmSharedLib, "JNI_GetDefaultJavaVMInitArgs");
 		if (JNI_GetDefaultJavaVMInitArgs_f == NULL) {
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
 					"Failed to load the JVM, function \"%s\" not exported.", "JNI_GetDefaultJavaVMInitArgs");
+			return false;
 		}
 
 		JNI_CreateJavaVM_f = (JNI_CreateJavaVM_t*)
@@ -1023,6 +1055,7 @@ bool java_initStatic(int _interfaceId,
 		if (JNI_CreateJavaVM_f == NULL) {
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
 					"Failed to load the JVM, function \"%s\" not exported.", "JNI_CreateJavaVM");
+			return false;
 		}
 
 		JNI_GetCreatedJavaVMs_f = (JNI_GetCreatedJavaVMs_t*)
@@ -1030,6 +1063,7 @@ bool java_initStatic(int _interfaceId,
 		if (JNI_GetCreatedJavaVMs_f == NULL) {
 			simpleLog_logL(SIMPLELOG_LEVEL_ERROR,
 					"Failed to load the JVM, function \"%s\" not exported.", "JNI_GetCreatedJavaVMs");
+			return false;
 		}
 	}
 

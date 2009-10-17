@@ -76,20 +76,13 @@ if    (CUSTOM_COMPILER_DEFINITIONS)
 	add_definitions(${CUSTOM_COMPILER_DEFINITIONS})
 endif (CUSTOM_COMPILER_DEFINITIONS)
 
-
 if    (MINGW)
 	set(SDL_INCLUDE_DIR "${MINGWLIBS}/include/SDL")
 endif (MINGW)
-FIND_PACKAGE(SDL)
-if    (SDL_FOUND)
-	INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
-else  (SDL_FOUND)
-	message("SDL not found on your system, disabling:")
-	message("* spring (engine)")
-	message("* spring-dedicated")
-endif (SDL_FOUND)
+FIND_PACKAGE(SDL REQUIRED)
+INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
 
-FIND_PACKAGE(Boost 1.34.0 COMPONENTS thread regex program_options system signals REQUIRED)
+FIND_PACKAGE(Boost 1.35.0 COMPONENTS thread regex program_options system signals REQUIRED)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
 
 FIND_PACKAGE(Devil REQUIRED)
@@ -199,7 +192,7 @@ Add_Subdirectory(tools/unitsync)
 ### make the basefiles (aka sdz's)
 file (TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/base" BASE_BUILD_DIR)
 if    (CMAKE_HOST_WIN32)
-	# As TO_NATIVE_PATH fail on windows, we need to do it manually
+	# As TO_NATIVE_PATH fails on windows, we need to do it manually
 	string (REPLACE "/" "\\" BASE_BUILD_DIR "${BASE_BUILD_DIR}")
 	add_custom_target(gamedata ALL COMMAND call make_gamedata_arch.bat ${BASE_BUILD_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/installer)
 else  (CMAKE_HOST_WIN32)

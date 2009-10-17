@@ -155,21 +155,12 @@ void CFeatureHandler::PostLoad()
 			drawQuads[(*it)->drawQuad].features.insert(*it);
 }
 
-
-void CFeatureHandler::BackupFeatures()
+void CFeatureHandler::SwapFadeFeatures()
 {
-	GML_RECMUTEX_LOCK(feat); // BackupFeatures
+	GML_RECMUTEX_LOCK(feat); // SwapFadeFeatures
 
-	fadeFeaturesSave    = fadeFeatures;
-	fadeFeaturesS3OSave = fadeFeaturesS3O;
-}
-
-void CFeatureHandler::RestoreFeatures()
-{
-	GML_RECMUTEX_LOCK(feat); // RestoreFeatures
-
-	fadeFeatures    = fadeFeaturesSave;
-	fadeFeaturesS3O = fadeFeaturesS3OSave;
+	fadeFeatures.swap(fadeFeaturesSave);
+	fadeFeaturesS3O.swap(fadeFeaturesS3OSave);
 }
 
 void CFeatureHandler::AddFeatureDef(const std::string& name, FeatureDef* fd)
@@ -584,12 +575,12 @@ void CFeatureHandler::TerrainChanged(int x1, int y1, int x2, int y2)
 
 void CFeatureHandler::Draw()
 {
-	fadeFeatures.clear();
-	fadeFeaturesS3O.clear();
-
 	drawFar.clear();
 
 	GML_RECMUTEX_LOCK(feat); // Draw
+
+	fadeFeatures.clear();
+	fadeFeaturesS3O.clear();
 
 	if(gu->drawFog) {
 		glEnable(GL_FOG);
@@ -889,7 +880,8 @@ void CFeatureHandler::DrawFeatureStats(CFeature* feature)
 		glRectf(-5.0f, 4.0f, rmin - 5.0f, 6.0f);
 	}
 	if(recl > rezp) {
-		glColor3f(0.6f, 0.6f, 0.6f);
+		float col = 0.8 - 0.3 * recl;
+		glColor3f(col, col, col);
 		glRectf(rmin - 5.0f, 4.0f, recl * 10.0f - 5.0f, 6.0f);
 	}
 	if(recl < rezp) {
