@@ -4518,6 +4518,7 @@ void CGame::GameEnd()
 		gameOver=true;
 		eventHandler.GameOver();
 		new CEndGameBox();
+		profiler.PrintProfilingInfo();
 		CDemoRecorder* record = net->GetDemoRecorder();
 		if (record != NULL) {
 			// Write CPlayer::Statistics and CTeam::Statistics to demo
